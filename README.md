@@ -1,141 +1,242 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# 🚀 منصة زايلو (Xylo Platform)
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+منصة اجتماعية للمقالات تجمع بين جودة المحتوى ونظام دعم مالي لحظي. اقرأ، تعلم، وادعم كتابك المفضلين.
 
-## ✨ Technology Stack
+## ✨ المميزات
 
-This scaffold provides a robust foundation built with:
+### 🎯 المصادقة
+- **تسجيل الدخول عبر Google OAuth** - تجربة سلسة وسريعة
+- **تسجيل بالبريد الإلكتروني** - مع التحقق من قوة كلمة المرور
+- **دعم Supabase Auth** - نظام مصادقة موثوق وآمن
+- **JWT Token** - للتوافق مع الأنظمة القديمة
 
-### 🎯 Core Framework
-- **⚡ Next.js 16** - The React framework for production with App Router
-- **📘 TypeScript 5** - Type-safe JavaScript for better developer experience
-- **🎨 Tailwind CSS 4** - Utility-first CSS framework for rapid UI development
+### 💰 النظام المالي
+- **نظام العملات (Coins)** - 1 دولار = 1000 عملة
+- **نظام الألماس (Diamonds)** - للكتاب، قابل للسحب
+- **الهدايا الافتراضية** - مع تأثيرات بصرية لحظية
+- **عمولة المنصة** - 10% من عمليات السحب
 
-### 🧩 UI Components & Styling
-- **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
-- **🎯 Lucide React** - Beautiful & consistent icon library
-- **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
+### 📝 المحتوى
+- **مقالات متعددة اللغات** - دعم RTL للعربية
+- **تصنيفات ووسوم** - تنظيم فعال للمحتوى
+- **نظام الإبلاغ** - للحفاظ على جودة المحتوى
 
-### 📋 Forms & Validation
-- **🎣 React Hook Form** - Performant forms with easy validation
-- **✅ Zod** - TypeScript-first schema validation
+### 🔒 الأمان
+- **تشفير AES-256-GCM** - للمفاتيح والرسائل الحساسة
+- **KYC للكتاب** - للسحب الآمن
+- **Middleware للحماية** - حماية المسارات الحساسة
 
-### 🔄 State Management & Data Fetching
-- **🐻 Zustand** - Simple, scalable state management
-- **🔄 TanStack Query** - Powerful data synchronization for React
-- **🌐 Fetch** - Promise-based HTTP request
+## 🛠️ التقنيات المستخدمة
 
-### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation TypeScript ORM
-- **🔐 NextAuth.js** - Complete open-source authentication solution
+- **Next.js 16** - مع App Router
+- **TypeScript 5** - للكتابة الآمنة
+- **Prisma ORM** - لقاعدة البيانات
+- **Supabase** - للمصادقة وقاعدة البيانات
+- **Tailwind CSS 4** - للتصميم
+- **shadcn/ui** - مكونات UI
 
-### 🎨 Advanced UI Features
-- **📊 TanStack Table** - Headless UI for building tables and datagrids
-- **🖱️ DND Kit** - Modern drag and drop toolkit for React
-- **📊 Recharts** - Redefined chart library built with React and D3
-- **🖼️ Sharp** - High performance image processing
+## 🚀 البدء السريع
 
-### 🌍 Internationalization & Utilities
-- **🌍 Next Intl** - Internationalization library for Next.js
-- **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
-
-## 🎯 Why This Scaffold?
-
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
-
-## 🚀 Quick Start
-
+### 1. تثبيت التبعيات
 ```bash
-# Install dependencies
 bun install
-
-# Start development server
-bun run dev
-
-# Build for production
-bun run build
-
-# Start production server
-bun start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+### 2. إعداد Supabase
 
-## 🤖 Powered by Z.ai
+#### أ. إنشاء مشروع Supabase
+1. اذهب إلى [supabase.com](https://supabase.com)
+2. أنشئ مشروعاً جديداً
+3. احصل على:
+   - Project URL
+   - Anon/Public Key
+   - Database Password
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+#### ب. إعداد Google OAuth
+1. اذهب إلى **Authentication > Providers** في Supabase
+2. فعّل **Google** provider
+3. أنشئ مشروعاً في [Google Cloud Console](https://console.cloud.google.com)
+4. احصل على `Client ID` و `Client Secret`
+5. أضف `https://[PROJECT_REF].supabase.co/auth/v1/callback` كـ Authorized redirect URI
+6. أدخل البيانات في Supabase
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+#### ج. تحديث ملف .env
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
+# Database URL (Direct connection for Prisma)
+DATABASE_URL=postgresql://postgres:[YOUR_PASSWORD]@db.your-project.supabase.co:5432/postgres
 
-## 📁 Project Structure
+# JWT Secret
+JWT_SECRET=your-secret-key
+
+# App URL
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+### 3. تهيئة قاعدة البيانات
+```bash
+# إنشاء الجداول
+bun run db:push
+
+# أو استخدام migrations
+bun run db:migrate
+```
+
+### 4. تشغيل الخادم
+```bash
+bun run dev
+```
+
+افتح [http://localhost:3000](http://localhost:3000) في المتصفح.
+
+## 📁 هيكل المشروع
 
 ```
 src/
-├── app/                 # Next.js App Router pages
-├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
-├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── app/                    # Next.js App Router
+│   ├── api/               # API Routes
+│   │   └── auth/          # المصادقة
+│   │       ├── login/
+│   │       ├── register/
+│   │       ├── callback/  # OAuth callback
+│   │       └── complete-profile/
+│   ├── auth/              # صفحات المصادقة
+│   └── page.tsx           # الصفحة الرئيسية
+├── components/
+│   └── ui/                # shadcn/ui components
+├── lib/
+│   ├── supabase/          # Supabase clients
+│   │   ├── client.ts      # Client-side
+│   │   └── server.ts      # Server-side
+│   ├── encryption/        # نظام التشفير
+│   ├── financial/         # الخدمات المالية
+│   ├── payment/           # بوابات الدفع
+│   └── auth.ts            # JWT helpers
+├── i18n/                  # التعدد اللغوي
+└── middleware.ts          # حماية المسارات
 ```
 
-## 🎨 Available Features & Components
+## 🔐 المصادقة
 
-This scaffold includes a comprehensive set of modern web development tools:
+### استخدام Google OAuth
+```typescript
+import { signInWithGoogle } from '@/lib/supabase/client';
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+// في المكون
+const handleGoogleLogin = async () => {
+  const result = await signInWithGoogle();
+  if (result.error) {
+    // معالجة الخطأ
+  }
+  // سيتم التحويل تلقائياً إلى Google
+};
+```
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+### استخدام البريد الإلكتروني
+```typescript
+import { signInWithEmail, signUpWithEmail } from '@/lib/supabase/client';
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+// تسجيل الدخول
+const result = await signInWithEmail(email, password);
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Fetch + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+// إنشاء حساب
+const result = await signUpWithEmail(email, password, { name, username });
+```
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+### حماية المسارات (Server-side)
+```typescript
+import { withAuth, withAdminAuth, withWriterAuth } from '@/lib/api-utils';
 
-## 🤝 Get Started with Z.ai
+// مسار محمي
+export async function GET(request: NextRequest) {
+  const authResult = await withAuth(request);
+  if (!authResult.authenticated) {
+    return authResult.error;
+  }
+  // المستخدم متاح في authResult.user
+}
+```
 
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
+## 💰 نظام العملات
+
+| العملة | الوصف | التحويل |
+|--------|-------|---------|
+| Coins | للقراء، للشراء | 1 USD = 1000 coins |
+| Diamonds | للكتاب، للسحب | 1000 diamonds = 1 USD |
+
+### باقات الشراء
+- $1 = 1,000 عملة
+- $5 = 5,000 عملة
+- $10 = 10,000 عملة
+
+### نظام الإحالة
+- مكافأة التسجيل: 100 عملة للمُحيل
+- عمولة الشراء: 50 عملة لكل $1 ينفقه المُحال
+
+## 🌍 التعدد اللغوي
+
+اللغات المدعومة:
+- 🇸🇦 العربية (الافتراضية) - RTL
+- 🇺🇸 الإنجليزية - LTR
+- 🇹🇷 التركية - LTR
+
+```typescript
+// استخدام الترجمة
+import { useTranslation } from '@/i18n/use-translation';
+
+const { t } = useTranslation('ar');
+console.log(t('welcome'));
+```
+
+## 📊 API Endpoints
+
+### المصادقة
+- `POST /api/auth/register` - إنشاء حساب
+- `POST /api/auth/login` - تسجيل الدخول
+- `POST /api/auth/logout` - تسجيل الخروج
+- `GET /api/auth/me` - بيانات المستخدم الحالي
+- `POST /api/auth/complete-profile` - إكمال الملف الشخصي
+
+### المحفظة
+- `GET /api/wallet` - رصيد المحفظة
+- `POST /api/wallet/purchase-coins` - شراء عملات
+- `POST /api/wallet/withdraw` - طلب سحب
+- `GET /api/wallet/transactions` - سجل المعاملات
+
+### المقالات
+- `GET /api/articles` - قائمة المقالات
+- `POST /api/articles` - إنشاء مقال
+- `GET /api/articles/[id]` - تفاصيل مقال
+- `POST /api/articles/[id]/publish` - نشر مقال
+
+### الهدايا
+- `GET /api/gifts` - قائمة الهدايا
+- `POST /api/gifts/send` - إرسال هدية
+
+## 🚀 النشر
+
+### Vercel (موصى به)
+```bash
+# تثبيت Vercel CLI
+npm i -g vercel
+
+# النشر
+vercel
+```
+
+### متغيرات البيئة المطلوبة
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `DATABASE_URL`
+- `JWT_SECRET`
+
+## 📝 الترخيص
+
+هذا المشروع مرخص تحت رخصة MIT.
 
 ---
 
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+Built with ❤️ for the Arabic content community.

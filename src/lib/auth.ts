@@ -45,6 +45,11 @@ export async function verifyPassword(password: string, hashedPassword: string): 
 }
 
 /**
+ * مقارنة كلمة المرور (alias for verifyPassword)
+ */
+export const comparePassword = verifyPassword;
+
+/**
  * إنشاء Access Token
  */
 export function generateAccessToken(payload: JWTPayload): string {
@@ -295,6 +300,25 @@ export async function logoutUser(token: string): Promise<{ success: boolean; mes
       success: false,
       message: 'حدث خطأ أثناء تسجيل الخروج',
     };
+  }
+}
+
+/**
+ * الحصول على المستخدم الحالي (من JWT token)
+ */
+export async function getCurrentUser() {
+  try {
+    // This function should be called from server-side code
+    // where headers are available
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    const token = cookieStore.get('token')?.value;
+    
+    if (!token) return null;
+    
+    return getUserFromToken(token);
+  } catch {
+    return null;
   }
 }
 

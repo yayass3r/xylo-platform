@@ -3,6 +3,18 @@ import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
 
 /**
+ * توليد كود إحالة عشوائي
+ */
+function generateReferralCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = 'XYLO_';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
  * API لإنشاء البيانات الأولية
  * يجب استدعاؤه مرة واحدة فقط بعد النشر
  */
@@ -21,10 +33,11 @@ export async function POST(request: NextRequest) {
     }
 
     // إنشاء المسؤول الافتراضي
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@xylo.com';
     const hashedPassword = await hashPassword('Admin123!');
     const admin = await prisma.user.create({
       data: {
-        email: 'admin@xylo.com',
+        email: adminEmail,
         password: hashedPassword,
         name: 'مدير النظام',
         username: 'admin',
@@ -33,6 +46,7 @@ export async function POST(request: NextRequest) {
         isEmailVerified: true,
         termsAcceptedAt: new Date(),
         privacyAcceptedAt: new Date(),
+        referralCode: generateReferralCode(),
       },
     });
 
@@ -96,6 +110,7 @@ export async function POST(request: NextRequest) {
         isEmailVerified: true,
         termsAcceptedAt: new Date(),
         privacyAcceptedAt: new Date(),
+        referralCode: generateReferralCode(),
       },
     });
 
@@ -120,6 +135,7 @@ export async function POST(request: NextRequest) {
         isEmailVerified: true,
         termsAcceptedAt: new Date(),
         privacyAcceptedAt: new Date(),
+        referralCode: generateReferralCode(),
       },
     });
 
@@ -135,7 +151,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'تم إنشاء البيانات الأولية بنجاح',
       data: {
-        admin: { email: 'admin@xylo.com', password: 'Admin123!' },
+        admin: { email: adminEmail, password: 'Admin123!' },
         writer: { email: 'writer@xylo.com', password: 'Writer123!' },
         reader: { email: 'reader@xylo.com', password: 'Reader123!' },
       },

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { signOut, getCurrentUser, onAuthStateChange } from '@/lib/supabase/client';
 import {
   BookOpen,
   Coins,
@@ -113,24 +114,65 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    // التحقق من وجود مستخدم مسجل
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    if (token && userData) {
+    // التحقق من وجود مستخدم مسجل (يدعم Supabase و JWT)
+    const checkAuth = async () => {
       try {
-        const parsed = JSON.parse(userData);
-        // Use requestAnimationFrame to avoid synchronous setState
-        requestAnimationFrame(() => {
-          setUser(parsed);
-        });
+        // أولاً: محاولة الحصول على المستخدم من Supabase
+        const supabaseUser = await getCurrentUser();
+        if (supabaseUser) {
+          // جلب بيانات المستخدم من API
+          const response = await fetch('/api/auth/me');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.data?.user) {
+              setUser(data.data.user);
+              return;
+            }
+          }
+        }
       } catch {
-        // Ignore parse errors
+        // Supabase auth failed, continue with JWT
       }
-    }
+
+      // ثانياً: محاولة الحصول من JWT/LocalStorage
+      const token = localStorage.getItem('token');
+      const userData = localStorage.getItem('user');
+      if (token && userData) {
+        try {
+          const parsed = JSON.parse(userData);
+          setUser(parsed);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    };
+
+    checkAuth();
+
+    // الاستماع لتغييرات المصادقة من Supabase
+    const subscription = onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        checkAuth();
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // تسجيل الخروج من Supabase
+      await signOut();
+    } catch {
+      // Ignore Supabase signout errors
+    }
+    // مسح البيانات المحلية
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     setUser(null);
     router.refresh();

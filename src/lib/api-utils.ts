@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken } from './auth';
+import { createClient } from './supabase/server';
+import { prisma } from './db';
 
 /**
  * استخراج Token من الطلب
@@ -20,18 +22,48 @@ export function extractToken(request: NextRequest): string | null {
 }
 
 /**
- * التحقق من المصادقة
+ * التحقق من المصادقة (يدعم JWT و Supabase)
  */
 export async function withAuth(request: NextRequest) {
+  // أولاً: محاولة التحقق من Supabase Auth
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser();
+
+    if (supabaseUser) {
+      // البحث عن المستخدم في قاعدة البيانات المحلية
+      const dbUser = await prisma.user.findUnique({
+        where: { email: supabaseUser.email! },
+        include: { wallet: true, kycVerification: true },
+      });
+
+      if (dbUser) {
+        return {
+          authenticated: true,
+          error: null,
+          user: dbUser,
+          supabaseUser,
+        };
+      }
+    }
+  } catch (error) {
+    // Supabase auth failed, continue with JWT
+    console.log('Supabase auth check failed, trying JWT...');
+  }
+
+  // ثانياً: محاولة التحقق من JWT
   const token = extractToken(request);
   if (!token) {
     return {
       authenticated: false,
       error: NextResponse.json(
         { success: false, message: 'يرجى تسجيل الدخول' },
-        { status: 401 }
+        { status: 401 },
       ),
       user: null,
+      supabaseUser: null,
     };
   }
 
@@ -41,9 +73,10 @@ export async function withAuth(request: NextRequest) {
       authenticated: false,
       error: NextResponse.json(
         { success: false, message: 'الجلسة منتهية الصلاحية' },
-        { status: 401 }
+        { status: 401 },
       ),
       user: null,
+      supabaseUser: null,
     };
   }
 
@@ -51,6 +84,7 @@ export async function withAuth(request: NextRequest) {
     authenticated: true,
     error: null,
     user,
+    supabaseUser: null,
   };
 }
 
@@ -68,9 +102,10 @@ export async function withAdminAuth(request: NextRequest) {
       authenticated: false,
       error: NextResponse.json(
         { success: false, message: 'غير مصرح لك بالوصول' },
-        { status: 403 }
+        { status: 403 },
       ),
       user: null,
+      supabaseUser: null,
     };
   }
 
@@ -92,9 +127,10 @@ export async function withWriterAuth(request: NextRequest) {
       authenticated: false,
       error: NextResponse.json(
         { success: false, message: 'هذه الميزة للكتاب فقط' },
-        { status: 403 }
+        { status: 403 },
       ),
       user: null,
+      supabaseUser: null,
     };
   }
 
@@ -116,9 +152,10 @@ export async function withActiveUser(request: NextRequest) {
       authenticated: false,
       error: NextResponse.json(
         { success: false, message: 'تم حظر حسابك' },
-        { status: 403 }
+        { status: 403 },
       ),
       user: null,
+      supabaseUser: null,
     };
   }
 
@@ -127,9 +164,10 @@ export async function withActiveUser(request: NextRequest) {
       authenticated: false,
       error: NextResponse.json(
         { success: false, message: 'تم تعليق حسابك مؤقتاً' },
-        { status: 403 }
+        { status: 403 },
       ),
       user: null,
+      supabaseUser: null,
     };
   }
 
@@ -139,18 +177,14 @@ export async function withActiveUser(request: NextRequest) {
 /**
  * استجابة API موحدة
  */
-export function apiResponse<T>(
-  data: T,
-  message?: string,
-  status: number = 200
-) {
+export function apiResponse<T>(data: T, message?: string, status: number = 200) {
   return NextResponse.json(
     {
       success: true,
       message,
       data,
     },
-    { status }
+    { status },
   );
 }
 
@@ -163,7 +197,7 @@ export function apiError(message: string, status: number = 400) {
       success: false,
       message,
     },
-    { status }
+    { status },
   );
 }
 

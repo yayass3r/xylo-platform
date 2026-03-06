@@ -265,7 +265,7 @@ model Transaction {
   gatewayTransactionId String?
   
   // === For Referral Transactions ===
-  referralRewardId String?
+  referralRewardId String? @unique
 
   // Relations
   wallet          Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
