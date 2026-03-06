@@ -32,10 +32,12 @@ enum ArticleStatus {
 }
 
 enum TransactionType {
-  PURCHASE
-  TIP
-  WITHDRAWAL
-  REFUND
+  PURCHASE          // شراء عملات
+  TIP               // إرسال هدية
+  WITHDRAWAL        // سحب أرباح
+  REFUND            // استرداد
+  REFERRAL_BONUS    // مكافأة إحالة
+  ADMIN_ADJUSTMENT  // تعديل إداري
 }
 
 enum TransactionStatus {
@@ -71,8 +73,6 @@ enum IdType {
   DRIVER_LICENSE
 }
 
-// === New Enums for Payment Gateways ===
-
 enum PaymentGatewayProvider {
   STRIPE
   PAYPAL
@@ -95,8 +95,6 @@ enum PaymentEnvironment {
   PRODUCTION
 }
 
-// === New Enums for Messages ===
-
 enum MessageStatus {
   SENT
   DELIVERED
@@ -110,12 +108,25 @@ enum ConversationType {
   SUPPORT
 }
 
+// === New Enums for Referral System ===
+
+enum ReferralRewardType {
+  SIGNUP_BONUS      // مكافأة التسجيل
+  PURCHASE_COMMISSION // عمولة الشراء
+}
+
+enum ReferralRewardStatus {
+  PENDING
+  AWARDED
+  CANCELLED
+}
+
 // ==================== Users ====================
 
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
-  password        String   // Argon2id or bcrypt hashed
+  password        String
   name            String?
   username        String?  @unique
   avatar          String?
@@ -127,13 +138,17 @@ model User {
   termsAcceptedAt DateTime?
   privacyAcceptedAt DateTime?
   
-  // === New: Language Preferences ===
+  // === Language Preferences ===
   preferredLanguage String @default("ar")
   timezone        String?  @default("Asia/Riyadh")
   
-  // === New: E2EE Keys (for future implementation) ===
-  publicKey       String?  @db.Text  // RSA/X25519 public key
-  privateKeyEnc   String?  @db.Text  // Encrypted private key (user password derived key)
+  // === E2EE Keys ===
+  publicKey       String?  @db.Text
+  privateKeyEnc   String?  @db.Text
+  
+  // === Referral System Fields ===
+  referralCode    String   @unique            // كود الإحالة الفريد (مثال: USER_ABC123)
+  referredById    String?                     // من قام بإحالة هذا المستخدم
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -149,16 +164,21 @@ model User {
   reportsReceived Report[]    @relation("ReportsReceived")
   notifications   Notification[]
   sessions        Session[]
+  sentMessages    PrivateMessage[]  @relation("SentMessages")
+  receivedMessages PrivateMessage[]  @relation("ReceivedMessages")
+  conversations   ConversationParticipant[]
+  paymentLogs     PaymentLog[]
   
-  // === New Relations ===
-  sentMessages      PrivateMessage[]  @relation("SentMessages")
-  receivedMessages  PrivateMessage[]  @relation("ReceivedMessages")
-  conversations     ConversationParticipant[]
-  paymentLogs       PaymentLog[]
+  // === Referral Relations ===
+  referrer        User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals       User[]   @relation("Referrals")
+  referralRewards ReferralReward[] @relation("ReferrerRewards")
+  earnedRewards   ReferralReward[] @relation("EarnedRewards")
 
   @@index([email])
   @@index([username])
   @@index([preferredLanguage])
+  @@index([referralCode])
 }
 
 // ==================== Articles ====================
@@ -181,10 +201,8 @@ model Article {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   publishedAt DateTime?
-  
-  // === New: Multi-language support ===
   language    String   @default("ar")
-  translations Json?   // { "en": { "title": "...", "slug": "..." } }
+  translations Json?
 
   // Relations
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -203,10 +221,20 @@ model Article {
 model Wallet {
   id              String   @id @default(cuid())
   userId          String   @unique
-  coinsBalance    Int      @default(0)
-  diamondsBalance Int      @default(0)
-  totalEarned     Int      @default(0)
-  totalWithdrawn  Int      @default(0)
+  
+  // === Balances ===
+  coinsBalance    Int      @default(0)     // رصيد العملات (للقراء)
+  diamondsBalance Int      @default(0)     // رصيد الألماس (للكتاب)
+  
+  // === Totals ===
+  totalPurchased  Int      @default(0)     // إجمالي العملات المشتراة
+  totalSpent      Int      @default(0)     // إجمالي العملات المنفقة (هدايا)
+  totalEarned     Int      @default(0)     // إجمالي الألماس المكتسب
+  totalWithdrawn  Int      @default(0)     // إجمالي الألماس المسحوب
+  
+  // === Referral Stats ===
+  totalReferralEarnings Int @default(0)    // إجمالي أرباح الإحالات
+  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -223,8 +251,8 @@ model Transaction {
   id              String   @id @default(cuid())
   walletId        String
   type            TransactionType
-  amount          Int
-  currency        String   @default("USD")
+  amount          Int                       // المبلغ (عملات أو ألماس)
+  currency        String   @default("COINS") // COINS, DIAMONDS, USD
   status          TransactionStatus @default(PENDING)
   paymentMethod   String?
   paymentReference String?
@@ -232,17 +260,22 @@ model Transaction {
   metadata        Json?
   createdAt       DateTime @default(now())
   
-  // === New: Payment Gateway Reference ===
+  // === Payment Gateway Reference ===
   gatewayId       String?
   gatewayTransactionId String?
+  
+  // === For Referral Transactions ===
+  referralRewardId String?
 
   // Relations
   wallet          Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  referralReward  ReferralReward? @relation(fields: [referralRewardId], references: [id])
 
   @@index([walletId])
   @@index([type])
   @@index([status])
   @@index([gatewayId])
+  @@index([createdAt])
 }
 
 // ==================== Gifts ====================
@@ -253,8 +286,8 @@ model Gift {
   nameAr        String?
   icon          String
   animation     String?
-  coinCost      Int
-  diamondValue  Int
+  coinCost      Int                        // تكلفة الهدية بالعملات
+  diamondValue  Int                        // قيمة الهدية بالألماس (للكاتب)
   isActive      Boolean  @default(true)
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
@@ -274,6 +307,11 @@ model SentGift {
   receiverId  String
   articleId   String?
   message     String?
+  
+  // === Transactional Data (for audit) ===
+  coinAmount  Int                       // عدد العملات المنزولة
+  diamondAmount Int                     // عدد الألماس المضافة
+  
   createdAt   DateTime @default(now())
 
   // Relations
@@ -285,6 +323,7 @@ model SentGift {
   @@index([senderId])
   @@index([receiverId])
   @@index([articleId])
+  @@index([createdAt])
 }
 
 // ==================== Withdrawal Requests ====================
@@ -292,11 +331,20 @@ model SentGift {
 model WithdrawalRequest {
   id              String   @id @default(cuid())
   userId          String
-  amount          Int
+  
+  // === Amount Details ===
+  diamondAmount   Int                       // عدد الألماس المسحوب
+  usdValue        Float                     // القيمة بالدولار قبل العمولة
+  platformFee     Float                     // عمولة المنصة
+  netAmount       Float                     // صافي المبلغ للكاتب
+  
+  // === Bank Details ===
   currency        String   @default("USD")
   bankName        String?
   bankAccount     String?
   accountHolderName String?
+  
+  // === Status ===
   status          WithdrawalStatus @default(PENDING)
   adminNotes      String?
   processedAt     DateTime?
@@ -307,6 +355,7 @@ model WithdrawalRequest {
 
   @@index([userId])
   @@index([status])
+  @@index([createdAt])
 }
 
 // ==================== KYC Verification ====================
@@ -364,10 +413,8 @@ model Notification {
   content   String   @db.Text
   isRead    Boolean  @default(false)
   data      Json?
-  createdAt DateTime @default(now())
-  
-  // === New: Language-aware notifications ===
   language  String   @default("ar")
+  createdAt DateTime @default(now())
 
   // Relations
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -382,19 +429,19 @@ model CoinPackage {
   id        String   @id @default(cuid())
   name      String
   nameAr    String?
-  coins     Int
-  price     Float
+  coins     Int                        // عدد العملات
+  price     Float                      // السعر بالدولار
   currency  String   @default("USD")
-  bonus     Int      @default(0)
+  bonus     Int      @default(0)       // عملات إضافية
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   
-  // === New: Localized names ===
+  // === Localized names ===
   nameEn    String?
-  nameTr    String?  // Turkish
-  nameFr    String?  // French
-  nameUr    String?  // Urdu
+  nameTr    String?
+  nameFr    String?
+  nameUr    String?
 
   @@index([isActive])
 }
@@ -406,10 +453,8 @@ model SystemSetting {
   key         String   @unique
   value       String   @db.Text
   description String?
-  updatedAt   DateTime @updatedAt
-  
-  // === New: Encrypted settings ===
   isEncrypted Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
 
   @@index([key])
 }
@@ -434,49 +479,46 @@ model Session {
   @@index([refreshToken])
 }
 
-// ==================== NEW: Payment Gateways ====================
+// ==================== Payment Gateways ====================
 
 model PaymentGateway {
   id                String   @id @default(cuid())
-  name              String   @unique           // e.g., "stripe_main", "paypal_primary"
-  displayName       String                     // e.g., "Stripe", "PayPal"
-  displayNameAr     String?                    // Arabic display name
+  name              String   @unique
+  displayName       String
+  displayNameAr     String?
   provider          PaymentGatewayProvider
   status            PaymentGatewayStatus @default(INACTIVE)
   environment       PaymentEnvironment @default(SANDBOX)
   
-  // === ENCRYPTED API Credentials (AES-256-GCM) ===
-  apiKeyEnc         String   @db.Text          // Encrypted API Key
-  apiSecretEnc      String   @db.Text          // Encrypted API Secret
-  webhookSecretEnc  String?  @db.Text          // Encrypted Webhook Secret
+  // === ENCRYPTED API Credentials ===
+  apiKeyEnc         String   @db.Text
+  apiSecretEnc      String   @db.Text
+  webhookSecretEnc  String?  @db.Text
+  clientIdEnc       String?  @db.Text
+  clientSecretEnc   String?  @db.Text
   
-  // === Additional encrypted fields ===
-  clientIdEnc       String?  @db.Text          // PayPal Client ID, etc.
-  clientSecretEnc   String?  @db.Text          // PayPal Client Secret
-  
-  // === Non-sensitive configuration ===
-  webhookUrl        String?                    // Webhook endpoint URL
-  callbackUrl       String?                    // Success/Cancel URLs
+  // === Configuration ===
+  webhookUrl        String?
+  callbackUrl       String?
   supportedCurrencies String[] @default(["USD", "SAR", "EUR"])
-  supportedPaymentMethods String[] @default([]) // ["card", "apple_pay", "google_pay"]
+  supportedPaymentMethods String[] @default([])
   minAmount         Float   @default(0.5)
   maxAmount         Float   @default(10000)
-  feePercentage     Float   @default(2.9)      // Processing fee %
-  feeFixed          Float   @default(0.30)     // Fixed fee amount
+  feePercentage     Float   @default(2.9)
+  feeFixed          Float   @default(0.30)
   
-  // === Display settings ===
-  logo              String?                    // Gateway logo URL
-  icon              String?                    // Gateway icon URL
+  // === Display ===
+  logo              String?
+  icon              String?
   sortOrder         Int      @default(0)
   showInApp         Boolean  @default(true)
   showInWeb         Boolean  @default(true)
   
-  // === Testing & Validation ===
+  // === Testing ===
   lastTestAt        DateTime?
   lastTestResult    String?  @db.Text
-  lastTestStatus    String?                    // "success", "failed"
+  lastTestStatus    String?
   
-  // === Metadata ===
   metadata          Json?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -489,7 +531,7 @@ model PaymentGateway {
   @@index([environment])
 }
 
-// ==================== NEW: Payment Logs ====================
+// ==================== Payment Logs ====================
 
 model PaymentLog {
   id                String   @id @default(cuid())
@@ -497,23 +539,26 @@ model PaymentLog {
   userId            String
   
   // === Transaction details ===
-  transactionType   String                      // "purchase", "withdrawal", "refund"
+  transactionType   String
   amount            Float
   currency          String
-  status            String                      // "pending", "completed", "failed", "refunded"
+  status            String
   
-  // === Gateway response (encrypted if sensitive) ===
+  // === Coin Package Reference ===
+  coinPackageId     String?
+  coinsAwarded      Int?
+  
+  // === Gateway response ===
   gatewayTransactionId String?
-  gatewayResponse   String?  @db.Text          // JSON response from gateway
+  gatewayResponse   String?  @db.Text
   errorCode         String?
   errorMessage      String?
   
-  // === Security & Tracking ===
+  // === Security ===
   ipAddress         String?
   userAgent         String?
   deviceId          String?
   
-  // === Timestamps ===
   processedAt       DateTime?
   createdAt         DateTime @default(now())
 
@@ -527,7 +572,67 @@ model PaymentLog {
   @@index([createdAt])
 }
 
-// ==================== NEW: Private Messages ====================
+// ==================== NEW: Referral Rewards ====================
+
+model ReferralReward {
+  id              String   @id @default(cuid())
+  
+  // === Parties ===
+  referrerId      String                     // صاحب كود الإحالة (المُحيل)
+  referredUserId  String                     // المستخدم المُحال
+  
+  // === Reward Details ===
+  type            ReferralRewardType
+  status          ReferralRewardStatus @default(PENDING)
+  
+  // === Amounts ===
+  purchaseAmount  Float?                     // قيمة الشراء بالدولار (لعمولة الشراء)
+  rewardCoins     Int                        // عدد العملات المكافأة
+  
+  // === Related Purchase ===
+  paymentLogId    String?                    // مرجع عملية الشراء
+  
+  // === Timestamps ===
+  awardedAt       DateTime?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  referrer        User     @relation("ReferrerRewards", fields: [referrerId], references: [id])
+  referredUser    User     @relation("EarnedRewards", fields: [referredUserId], references: [id])
+  transaction     Transaction?
+
+  @@index([referrerId])
+  @@index([referredUserId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ==================== NEW: Platform Revenue ====================
+
+model PlatformRevenue {
+  id              String   @id @default(cuid())
+  
+  // === Revenue Source ===
+  source          String                     // "withdrawal_commission", "gift_commission"
+  sourceId        String?                    // ID of the related transaction
+  
+  // === Amounts ===
+  grossAmount     Float                      // المبلغ الإجمالي
+  commissionRate  Float                       // نسبة العمولة
+  netRevenue      Float                      // صافي الربح
+  
+  // === Currency ===
+  currency        String   @default("USD")
+  
+  // === Timestamps ===
+  createdAt       DateTime @default(now())
+
+  @@index([source])
+  @@index([createdAt])
+}
+
+// ==================== Private Messages ====================
 
 model PrivateMessage {
   id              String   @id @default(cuid())
@@ -535,28 +640,27 @@ model PrivateMessage {
   senderId        String
   receiverId      String
   
-  // === ENCRYPTED CONTENT (AES-256-GCM) ===
-  contentEnc      String   @db.Text          // Encrypted message content
-  contentIv       String                       // Initialization Vector (Base64)
-  contentAuthTag  String                       // Authentication Tag (Base64)
+  // === ENCRYPTED CONTENT ===
+  contentEnc      String   @db.Text
+  contentIv       String
+  contentAuthTag  String
   
-  // === For E2EE future implementation ===
-  senderKeyId     String?                      // Sender's key ID
-  receiverKeyId   String?                      // Receiver's key ID
-  encryptedFor    String?  @db.Text          // JSON: { "userId": "encryptedKey" }
+  // === E2EE ===
+  senderKeyId     String?
+  receiverKeyId   String?
+  encryptedFor    String?  @db.Text
   
-  // === Message metadata (not encrypted) ===
-  messageType     String   @default("text")   // "text", "image", "file", "gift"
-  attachments     Json?                       // File metadata (not the actual file)
+  // === Metadata ===
+  messageType     String   @default("text")
+  attachments     Json?
   replyToId       String?
   
   // === Status ===
   status          MessageStatus @default(SENT)
   editedAt        DateTime?
   deletedAt       DateTime?
-  deletedFor      String[] @default([])        // User IDs who deleted this message
+  deletedFor      String[] @default([])
   
-  // === Timestamps ===
   readAt          DateTime?
   deliveredAt     DateTime?
   createdAt       DateTime @default(now())
@@ -575,32 +679,22 @@ model PrivateMessage {
   @@index([status])
 }
 
-// ==================== NEW: Conversations ====================
+// ==================== Conversations ====================
 
 model Conversation {
   id              String   @id @default(cuid())
   type            ConversationType @default(DIRECT)
-  
-  // === For group conversations ===
   name            String?
-  nameEnc         String?                    // Encrypted group name
+  nameEnc         String?
   avatar          String?
   description     String?
-  
-  // === Last message preview ===
   lastMessageId   String?
   lastMessageAt   DateTime?
-  lastMessagePreview String?                 // Preview (not encrypted for sorting)
-  
-  // === Settings ===
+  lastMessagePreview String?
   isEncrypted     Boolean  @default(true)
   isArchived      Boolean  @default(false)
   isMuted         Boolean  @default(false)
-  
-  // === E2EE Keys (for group conversations) ===
-  groupKeyEnc     String?  @db.Text          // Encrypted group key
-  
-  // === Timestamps ===
+  groupKeyEnc     String?  @db.Text
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -612,24 +706,18 @@ model Conversation {
   @@index([lastMessageAt])
 }
 
-// ==================== NEW: Conversation Participants ====================
+// ==================== Conversation Participants ====================
 
 model ConversationParticipant {
   id              String   @id @default(cuid())
   conversationId  String
   userId          String
-  
-  // === Participant-specific E2EE keys ===
-  keyEnc          String?  @db.Text          // Conversation key encrypted for this user
-  
-  // === Settings ===
+  keyEnc          String?  @db.Text
   unreadCount     Int      @default(0)
   lastReadAt      DateTime?
   isMuted         Boolean  @default(false)
   isArchived      Boolean  @default(false)
-  
-  // === Admin/Owner (for groups) ===
-  role            String   @default("member") // "owner", "admin", "member"
+  role            String   @default("member")
   joinedAt        DateTime @default(now())
   leftAt          DateTime?
 
@@ -642,12 +730,12 @@ model ConversationParticipant {
   @@index([userId])
 }
 
-// ==================== NEW: Translation Keys ====================
+// ==================== Translation Keys ====================
 
 model TranslationKey {
   id          String   @id @default(cuid())
-  key         String   @unique            // e.g., "common.submit", "nav.home"
-  namespace   String   @default("common") // "common", "nav", "auth", etc.
+  key         String   @unique
+  namespace   String   @default("common")
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -658,15 +746,15 @@ model TranslationKey {
   @@index([namespace])
 }
 
-// ==================== NEW: Translation Values ====================
+// ==================== Translation Values ====================
 
 model TranslationValue {
   id              String   @id @default(cuid())
   translationKeyId String
-  language        String                       // "ar", "en", "tr", etc.
+  language        String
   value           String   @db.Text
   isApproved      Boolean  @default(false)
-  translatedBy    String?                      // User ID or "system"
+  translatedBy    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -677,14 +765,14 @@ model TranslationValue {
   @@index([isApproved])
 }
 
-// ==================== NEW: Encryption Audit Log ====================
+// ==================== Encryption Audit Log ====================
 
 model EncryptionAuditLog {
   id          String   @id @default(cuid())
-  action      String                       // "encrypt", "decrypt", "rotate_key"
-  resource    String                       // "payment_gateway", "message", "user_key"
+  action      String
+  resource    String
   resourceId  String?
-  userId      String?                      // Who performed the action
+  userId      String?
   ipAddress   String?
   success     Boolean  @default(true)
   errorMessage String?
