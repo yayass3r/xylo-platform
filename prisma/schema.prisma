@@ -1,32 +1,358 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ==================== Enums ====================
+
+enum UserRole {
+  USER
+  WRITER
+  ADMIN
 }
 
-model Post {
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum ArticleStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+enum TransactionType {
+  PURCHASE
+  TIP
+  WITHDRAWAL
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+enum IdType {
+  NATIONAL_ID
+  PASSPORT
+  DRIVER_LICENSE
+}
+
+// ==================== Users ====================
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  password        String
+  name            String?
+  username        String?  @unique
+  avatar          String?
+  bio             String?
+  role            UserRole @default(USER)
+  status          UserStatus @default(ACTIVE)
+  isEmailVerified Boolean  @default(false)
+  isKycVerified   Boolean  @default(false)
+  termsAcceptedAt DateTime?
+  privacyAcceptedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  articles        Article[]
+  wallet          Wallet?
+  sentGifts       SentGift[]  @relation("SentGiftsSender")
+  receivedGifts   SentGift[]  @relation("SentGiftsReceiver")
+  withdrawalRequests WithdrawalRequest[]
+  kycVerification KycVerification?
+  reportsMade     Report[]    @relation("ReportsMade")
+  reportsReceived Report[]    @relation("ReportsReceived")
+  notifications   Notification[]
+  sessions        Session[]
+
+  @@index([email])
+  @@index([username])
+}
+
+// ==================== Articles ====================
+
+model Article {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  content     String   @db.Text
+  excerpt     String?  @db.Text
+  coverImage  String?
+  authorId    String
+  status      ArticleStatus @default(DRAFT)
+  viewsCount  Int      @default(0)
+  readTime    Int      @default(0)
+  category    String?
+  tags        String[] @default([])
+  isFeatured  Boolean  @default(false)
+  isPaid      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  publishedAt DateTime?
+
+  // Relations
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  gifts       SentGift[]
+  reports     Report[]
+
+  @@index([slug])
+  @@index([authorId])
+  @@index([status])
+  @@index([category])
+}
+
+// ==================== Wallet ====================
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  coinsBalance    Int      @default(0)
+  diamondsBalance Int      @default(0)
+  totalEarned     Int      @default(0)
+  totalWithdrawn  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions    Transaction[]
+
+  @@index([userId])
+}
+
+// ==================== Transactions ====================
+
+model Transaction {
+  id              String   @id @default(cuid())
+  walletId        String
+  type            TransactionType
+  amount          Int
+  currency        String   @default("USD")
+  status          TransactionStatus @default(PENDING)
+  paymentMethod   String?
+  paymentReference String?
+  description     String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  wallet          Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+}
+
+// ==================== Gifts ====================
+
+model Gift {
+  id            String   @id @default(cuid())
+  name          String
+  nameAr        String?
+  icon          String
+  animation     String?
+  coinCost      Int
+  diamondValue  Int
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  // Relations
+  sentGifts     SentGift[]
+
+  @@index([isActive])
+}
+
+// ==================== Sent Gifts ====================
+
+model SentGift {
+  id          String   @id @default(cuid())
+  giftId      String
+  senderId    String
+  receiverId  String
+  articleId   String?
+  message     String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  gift        Gift     @relation(fields: [giftId], references: [id])
+  sender      User     @relation("SentGiftsSender", fields: [senderId], references: [id])
+  receiver    User     @relation("SentGiftsReceiver", fields: [receiverId], references: [id])
+  article     Article? @relation(fields: [articleId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([articleId])
+}
+
+// ==================== Withdrawal Requests ====================
+
+model WithdrawalRequest {
+  id              String   @id @default(cuid())
+  userId          String
+  amount          Int
+  currency        String   @default("USD")
+  bankName        String?
+  bankAccount     String?
+  accountHolderName String?
+  status          WithdrawalStatus @default(PENDING)
+  adminNotes      String?
+  processedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ==================== KYC Verification ====================
+
+model KycVerification {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  idType        IdType
+  idFrontImage  String
+  idBackImage   String?
+  selfieImage   String
+  status        KycStatus @default(PENDING)
+  adminNotes    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  // Relations
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// ==================== Reports ====================
+
+model Report {
+  id                String   @id @default(cuid())
+  reporterId        String
+  reportedUserId    String?
+  reportedArticleId String?
+  reason            String
+  description       String?  @db.Text
+  status            ReportStatus @default(PENDING)
+  adminNotes        String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  reporter          User      @relation("ReportsMade", fields: [reporterId], references: [id])
+  reportedUser      User?     @relation("ReportsReceived", fields: [reportedUserId], references: [id])
+  reportedArticle   Article?  @relation(fields: [reportedArticleId], references: [id])
+
+  @@index([reporterId])
+  @@index([reportedUserId])
+  @@index([status])
+}
+
+// ==================== Notifications ====================
+
+model Notification {
   id        String   @id @default(cuid())
+  userId    String
+  type      String
   title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  content   String   @db.Text
+  isRead    Boolean  @default(false)
+  data      Json?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// ==================== Coin Packages ====================
+
+model CoinPackage {
+  id        String   @id @default(cuid())
+  name      String
+  nameAr    String?
+  coins     Int
+  price     Float
+  currency  String   @default("USD")
+  bonus     Int      @default(0)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+}
+
+// ==================== System Settings ====================
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+// ==================== Sessions ====================
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  refreshToken String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  // Relations
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([refreshToken])
 }
