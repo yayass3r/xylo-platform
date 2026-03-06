@@ -1,0 +1,55 @@
+{
+  "common": {
+    "appName": "Xylo",
+    "loading": "Yükleniyor...",
+    "error": "Bir hata oluştu",
+    "success": "İşlem başarılı",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "create": "Oluştur",
+    "search": "Ara",
+    "submit": "Gönder",
+    "confirm": "Onayla",
+    "back": "Geri",
+    "next": "Sonraki",
+    "previous": "Önceki",
+    "close": "Kapat",
+    "viewAll": "Tümünü Gör",
+    "noData": "Veri yok",
+    "required": "Zorunlu",
+    "optional": "İsteğe bağlı"
+    "lang": {
+      "appName": "Xylo",
+      "loading": "Chargement...",
+      "error": "Une erreur s'est produite",
+      "success": "Opération réussie",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "delete": "Supprimer",
+      "edit": "Modifier",
+      "create": "Créer",
+      "search": "Rechercher"
+      "submit": "Soumettre",
+      "confirm": "Confirmer",
+      "back": "Retour",
+      "next": "Suivant",
+      "previous": "Précédent",
+      "close": "Fermer",
+      "viewAll": "Voir tout",
+      "noData": "Aucune donnée",
+      "required": "Requis",
+      "optional": "Facultatif"
+    }
+  },
+  "nav": {
+    "home": "Ana Sayfa",
+    "articles": "Makaleler",
+    "writers": "Yazarlar",
+    "categories": "Kategoriler",
+    "about": "Hakkında",
+    "contact": "İletişim",
+    "faq": "SSS"
+  }
+}
