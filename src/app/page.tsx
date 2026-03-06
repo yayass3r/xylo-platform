@@ -116,7 +116,15 @@ export default function HomePage() {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
     if (token && userData) {
-      setUser(JSON.parse(userData));
+      try {
+        const parsed = JSON.parse(userData);
+        // Use requestAnimationFrame to avoid synchronous setState
+        requestAnimationFrame(() => {
+          setUser(parsed);
+        });
+      } catch {
+        // Ignore parse errors
+      }
     }
   }, []);
 

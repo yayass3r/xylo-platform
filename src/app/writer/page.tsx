@@ -82,11 +82,18 @@ export default function WriterDashboard() {
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
-      const parsedUser = JSON.parse(userData);
-      if (parsedUser.role !== 'WRITER' && parsedUser.role !== 'ADMIN') {
-        router.push('/');
-      } else {
-        setUser(parsedUser);
+      try {
+        const parsedUser = JSON.parse(userData);
+        if (parsedUser.role !== 'WRITER' && parsedUser.role !== 'ADMIN') {
+          router.push('/');
+        } else {
+          // Use requestAnimationFrame to avoid synchronous setState
+          requestAnimationFrame(() => {
+            setUser(parsedUser);
+          });
+        }
+      } catch {
+        router.push('/auth/login');
       }
     } else {
       router.push('/auth/login');
