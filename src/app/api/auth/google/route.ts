@@ -176,13 +176,13 @@ export async function handleGoogleCallback(code: string) {
     }
 
     // إنشاء JWT tokens
-    const token = generateAccessToken({
+    const token = await generateAccessToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    const refreshToken = generateRefreshToken({
+    const refreshToken = await generateRefreshToken({
       userId: user.id,
       email: user.email,
       role: user.role,

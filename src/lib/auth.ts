@@ -1,15 +1,28 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import { prisma } from './db';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'xylo-secret-key-change-in-production';
-const JWT_EXPIRES_IN = '7d';
-const REFRESH_TOKEN_EXPIRES_IN = '30d';
+/**
+ * Get JWT secret key as Uint8Array for jose library
+ */
+function getSecretKey(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is not defined');
+  }
+  return new TextEncoder().encode(secret);
+}
+
+// Token expiration times
+const ACCESS_TOKEN_EXPIRES_IN = '7d'; // 7 days
+const REFRESH_TOKEN_EXPIRES_IN = '30d'; // 30 days
 
 export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
+  iat?: number;
+  exp?: number;
 }
 
 export interface AuthResult {
@@ -24,13 +37,14 @@ export interface AuthResult {
     role: string;
     status: string;
     isKycVerified: boolean;
+    coinsBalance?: number;
   };
   token?: string;
   refreshToken?: string;
 }
 
 /**
- * تشفير كلمة المرور
+ * Hash password using bcrypt
  */
 export async function hashPassword(password: string): Promise<string> {
   const saltRounds = 12;
@@ -38,44 +52,61 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /**
- * التحقق من كلمة المرور
+ * Verify password against hash
  */
 export async function verifyPassword(password: string, hashedPassword: string): Promise<boolean> {
   return bcrypt.compare(password, hashedPassword);
 }
 
 /**
- * مقارنة كلمة المرور (alias for verifyPassword)
+ * Alias for verifyPassword
  */
 export const comparePassword = verifyPassword;
 
 /**
- * إنشاء Access Token
+ * Generate Access Token using jose (Edge Runtime compatible)
  */
-export function generateAccessToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+export async function generateAccessToken(payload: JWTPayload): Promise<string> {
+  const secretKey = getSecretKey();
+  
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(ACCESS_TOKEN_EXPIRES_IN)
+    .sign(secretKey);
 }
 
 /**
- * إنشاء Refresh Token
+ * Generate Refresh Token using jose (Edge Runtime compatible)
  */
-export function generateRefreshToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRES_IN });
+export async function generateRefreshToken(payload: JWTPayload): Promise<string> {
+  const secretKey = getSecretKey();
+  
+  return new SignJWT({ ...payload })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(REFRESH_TOKEN_EXPIRES_IN)
+    .sign(secretKey);
 }
 
 /**
- * التحقق من صحة Token
+ * Verify JWT token using jose (Edge Runtime compatible)
  */
-export function verifyToken(token: string): JWTPayload | null {
+export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
-  } catch {
+    const secretKey = getSecretKey();
+    const { payload } = await jwtVerify(token, secretKey, {
+      algorithms: ['HS256'],
+    });
+    return payload as JWTPayload;
+  } catch (error) {
+    console.error('Token verification failed:', error instanceof Error ? error.message : 'Unknown error');
     return null;
   }
 }
 
 /**
- * تسجيل مستخدم جديد
+ * Register new user
  */
 export async function registerUser(data: {
   email: string;
@@ -86,7 +117,7 @@ export async function registerUser(data: {
   acceptPrivacy?: boolean;
 }): Promise<AuthResult> {
   try {
-    // التحقق من وجود المستخدم
+    // Check if user exists
     const existingUser = await prisma.user.findUnique({
       where: { email: data.email.toLowerCase() },
     });
@@ -98,7 +129,7 @@ export async function registerUser(data: {
       };
     }
 
-    // التحقق من اسم المستخدم
+    // Check username uniqueness
     if (data.username) {
       const existingUsername = await prisma.user.findUnique({
         where: { username: data.username },
@@ -112,10 +143,10 @@ export async function registerUser(data: {
       }
     }
 
-    // تشفير كلمة المرور
+    // Hash password
     const hashedPassword = await hashPassword(data.password);
 
-    // إنشاء المستخدم
+    // Create user
     const user = await prisma.user.create({
       data: {
         email: data.email.toLowerCase(),
@@ -127,7 +158,7 @@ export async function registerUser(data: {
       },
     });
 
-    // إنشاء محفظة للمستخدم
+    // Create wallet
     await prisma.wallet.create({
       data: {
         userId: user.id,
@@ -136,20 +167,20 @@ export async function registerUser(data: {
       },
     });
 
-    // إنشاء Tokens
-    const token = generateAccessToken({
+    // Generate tokens
+    const token = await generateAccessToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    const refreshToken = generateRefreshToken({
+    const refreshToken = await generateRefreshToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    // حفظ الجلسة
+    // Save session
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -188,11 +219,11 @@ export async function registerUser(data: {
 }
 
 /**
- * تسجيل الدخول
+ * Login user
  */
 export async function loginUser(email: string, password: string): Promise<AuthResult> {
   try {
-    // البحث عن المستخدم
+    // Find user
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() },
       include: { wallet: true },
@@ -205,7 +236,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       };
     }
 
-    // التحقق من حالة المستخدم
+    // Check user status
     if (user.status === 'BANNED') {
       return {
         success: false,
@@ -220,7 +251,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       };
     }
 
-    // التحقق من كلمة المرور
+    // Verify password
     const isPasswordValid = await verifyPassword(password, user.password);
 
     if (!isPasswordValid) {
@@ -230,20 +261,20 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       };
     }
 
-    // إنشاء Tokens
-    const token = generateAccessToken({
+    // Generate tokens
+    const token = await generateAccessToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    const refreshToken = generateRefreshToken({
+    const refreshToken = await generateRefreshToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    // حفظ الجلسة
+    // Save session
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -268,6 +299,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
         role: user.role,
         status: user.status,
         isKycVerified: user.isKycVerified,
+        coinsBalance: user.wallet?.coinsBalance || 0,
       },
       token,
       refreshToken,
@@ -282,7 +314,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
 }
 
 /**
- * تسجيل الخروج
+ * Logout user
  */
 export async function logoutUser(token: string): Promise<{ success: boolean; message: string }> {
   try {
@@ -304,12 +336,10 @@ export async function logoutUser(token: string): Promise<{ success: boolean; mes
 }
 
 /**
- * الحصول على المستخدم الحالي (من JWT token)
+ * Get current user from token (server-side)
  */
 export async function getCurrentUser() {
   try {
-    // This function should be called from server-side code
-    // where headers are available
     const { cookies } = await import('next/headers');
     const cookieStore = await cookies();
     const token = cookieStore.get('token')?.value;
@@ -323,11 +353,11 @@ export async function getCurrentUser() {
 }
 
 /**
- * الحصول على المستخدم من Token
+ * Get user from token
  */
 export async function getUserFromToken(token: string) {
   try {
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) return null;
 
     const session = await prisma.session.findFirst({
@@ -351,25 +381,25 @@ export async function getUserFromToken(token: string) {
 }
 
 /**
- * التحقق من صلاحيات المسؤول
+ * Check if user is admin
  */
 export function isAdmin(user: { role: string }): boolean {
   return user.role === 'ADMIN';
 }
 
 /**
- * التحقق من صلاحيات الكاتب
+ * Check if user is writer (or admin)
  */
 export function isWriter(user: { role: string }): boolean {
   return user.role === 'WRITER' || user.role === 'ADMIN';
 }
 
 /**
- * تجديد Token
+ * Refresh access token
  */
 export async function refreshAccessToken(refreshToken: string): Promise<AuthResult> {
   try {
-    const payload = verifyToken(refreshToken);
+    const payload = await verifyToken(refreshToken);
     if (!payload) {
       return {
         success: false,
@@ -402,20 +432,20 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthResu
       };
     }
 
-    // إنشاء Tokens جديدة
-    const newToken = generateAccessToken({
+    // Generate new tokens
+    const newToken = await generateAccessToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    const newRefreshToken = generateRefreshToken({
+    const newRefreshToken = await generateRefreshToken({
       userId: user.id,
       email: user.email,
       role: user.role,
     });
 
-    // تحديث الجلسة
+    // Update session
     await prisma.session.update({
       where: { id: session.id },
       data: {
