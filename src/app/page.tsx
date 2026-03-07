@@ -114,16 +114,20 @@ export default function HomePage() {
 
   useEffect(() => {
     // التحقق من وجود مستخدم مسجل من JWT/LocalStorage
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    if (token && userData) {
-      try {
-        const parsed = JSON.parse(userData);
-        setUser(parsed);
-      } catch {
-        // Ignore parse errors
+    const loadUser = () => {
+      const token = localStorage.getItem('token');
+      const userData = localStorage.getItem('user');
+      if (token && userData) {
+        try {
+          const parsed = JSON.parse(userData);
+          // Use setTimeout to defer setState to next tick
+          setTimeout(() => setUser(parsed), 0);
+        } catch {
+          // Ignore parse errors
+        }
       }
-    }
+    };
+    loadUser();
   }, []);
 
   const handleLogout = async () => {
@@ -133,6 +137,12 @@ export default function HomePage() {
     localStorage.removeItem('user');
     setUser(null);
     router.refresh();
+  };
+
+  const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
   };
 
   return (
@@ -167,6 +177,7 @@ export default function HomePage() {
                   placeholder="ابحث عن مقالات..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearch}
                   className="pr-10 bg-slate-100 border-0 focus-visible:ring-violet-500"
                 />
               </div>

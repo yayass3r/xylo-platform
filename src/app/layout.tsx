@@ -14,24 +14,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Z.ai Code Scaffold - AI-Powered Development",
-  description: "Modern Next.js scaffold optimized for AI-powered development with Z.ai. Built with TypeScript, Tailwind CSS, and shadcn/ui.",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  title: "زايلو - منصة المقالات الاجتماعية",
+  description: "منصة اجتماعية للمقالات تجمع بين جودة المحتوى ونظام دعم مالي لحظي. اقرأ، تعلم، وادعم كتابك المفضلين.",
+  keywords: ["زايلو", "مقالات", "كتاب", "قراءة", "محتوى عربي", "إبداع", "ثقافة"],
+  authors: [{ name: "زايلو" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.png",
   },
   openGraph: {
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
-    url: "https://chat.z.ai",
-    siteName: "Z.ai",
+    title: "زايلو - منصة المقالات الاجتماعية",
+    description: "منصة اجتماعية للمقالات تجمع بين جودة المحتوى ونظام دعم مالي لحظي",
+    url: "https://xylo.ai",
+    siteName: "زايلو",
     type: "website",
+    locale: "ar_SA",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Z.ai Code Scaffold",
-    description: "AI-powered development with modern React stack",
+    title: "زايلو - منصة المقالات الاجتماعية",
+    description: "منصة اجتماعية للمقالات تجمع بين جودة المحتوى ونظام دعم مالي لحظي",
   },
 };
 
@@ -41,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >

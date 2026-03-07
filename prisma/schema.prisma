@@ -174,6 +174,11 @@ model User {
   referrals       User[]   @relation("Referrals")
   referralRewards ReferralReward[] @relation("ReferrerRewards")
   earnedRewards   ReferralReward[] @relation("EarnedRewards")
+  
+  // === Follow Relations ===
+  followers       Follow[] @relation("UserFollowers")
+  following       Follow[] @relation("UserFollowing")
+  oAuthAccounts   OAuthAccount[]
 
   @@index([email])
   @@index([username])
@@ -208,6 +213,7 @@ model Article {
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   gifts       SentGift[]
   reports     Report[]
+  articleHashtags ArticleHashtag[]
 
   @@index([slug])
   @@index([authorId])
@@ -782,4 +788,80 @@ model EncryptionAuditLog {
   @@index([action])
   @@index([resource])
   @@index([createdAt])
+}
+
+// ==================== Follow System ====================
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String                       // المستخدم الذي يتابع
+  followingId String                       // المستخدم المتابع
+  
+  createdAt   DateTime @default(now())
+
+  // Relations
+  follower    User     @relation("UserFollowers", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@index([createdAt])
+}
+
+// ==================== Hashtags ====================
+
+model Hashtag {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  nameAr      String?
+  articlesCount Int    @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  articleHashtags ArticleHashtag[]
+
+  @@index([name])
+  @@index([articlesCount])
+}
+
+// ==================== Article Hashtags (Many-to-Many) ====================
+
+model ArticleHashtag {
+  id        String   @id @default(cuid())
+  articleId String
+  hashtagId String
+  createdAt DateTime @default(now())
+
+  // Relations
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  hashtag   Hashtag  @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, hashtagId])
+  @@index([articleId])
+  @@index([hashtagId])
+}
+
+// ==================== Google OAuth Accounts ====================
+
+model OAuthAccount {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String                       // google, facebook, apple, etc.
+  providerId   String                       // ID from the OAuth provider
+  accessToken  String?  @db.Text
+  refreshToken String?  @db.Text
+  tokenExpiresAt DateTime?
+  profileData  Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@index([userId])
+  @@index([provider])
 }
