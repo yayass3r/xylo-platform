@@ -2,16 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { generateAccessToken, generateRefreshToken } from '@/lib/auth';
 
-// Google OAuth Configuration
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/auth/google/callback';
-
 /**
  * GET /api/auth/google
  * بدء عملية Google OAuth
  */
 export async function GET(request: NextRequest) {
+  // Google OAuth Configuration - قراءة من environment variables
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+  const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://xylo-platform.vercel.app/api/auth/google/callback';
+
+  // التحقق من وجود المتغيرات المطلوبة
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    console.error('Missing Google OAuth credentials');
+    return NextResponse.redirect(
+      new URL('/auth/login?error=google_oauth_not_configured', request.url)
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action') || 'login';
 
@@ -28,8 +36,6 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', 'email profile');
   authUrl.searchParams.set('state', state);
-  authUrl.searchParams.set('access_type', 'offline');
-  authUrl.searchParams.set('prompt', 'consent');
 
   return NextResponse.redirect(authUrl.toString());
 }
@@ -38,6 +44,18 @@ export async function GET(request: NextRequest) {
  * معالجة callback من Google
  */
 export async function handleGoogleCallback(code: string) {
+  // قراءة environment variables
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+  const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://xylo-platform.vercel.app/api/auth/google/callback';
+
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return {
+      success: false,
+      message: 'Google OAuth غير مُعد بشكل صحيح',
+    };
+  }
+
   try {
     // تبديل الكود بالتوكن
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
