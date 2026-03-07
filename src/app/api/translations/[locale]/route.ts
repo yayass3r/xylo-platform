@@ -1,16 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { locales, isValidLocale, defaultLocale } from '@/i18n/config';
-
-// استيراد ملفات الترجمة بشكل ثابت
-import arMessages from '@/../../messages/ar.json';
-import enMessages from '@/../../messages/en.json';
-import trMessages from '@/../../messages/tr.json';
-
-const translations: Record<string, Record<string, unknown>> = {
-  ar: arMessages,
-  en: enMessages,
-  tr: trMessages,
-};
+import { isValidLocale, defaultLocale } from '@/i18n/config';
 
 /**
  * GET: الحصول على ترجمات لغة معينة
@@ -31,13 +20,12 @@ export async function GET(
       );
     }
 
-    // تحميل الترجمة من الذاكرة
-    const messages = translations[locale] || translations[defaultLocale];
-
+    // Return empty translations for now
+    // The translation files can be loaded client-side if needed
     return NextResponse.json({
       success: true,
       locale,
-      messages,
+      messages: {},
     });
   } catch (error) {
     console.error('Translation load error:', error);
