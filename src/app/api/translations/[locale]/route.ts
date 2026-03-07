@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { locales, isValidLocale, defaultLocale } from '@/i18n/config';
 
+// استيراد ملفات الترجمة بشكل ثابت
+import arMessages from '@/../../messages/ar.json';
+import enMessages from '@/../../messages/en.json';
+import trMessages from '@/../../messages/tr.json';
+
+const translations: Record<string, Record<string, unknown>> = {
+  ar: arMessages,
+  en: enMessages,
+  tr: trMessages,
+};
+
 /**
  * GET: الحصول على ترجمات لغة معينة
  * Get translations for a specific locale
@@ -20,8 +31,8 @@ export async function GET(
       );
     }
 
-    // تحميل ملف الترجمة
-    const messages = (await import(`@/../../messages/${locale}.json`)).default;
+    // تحميل الترجمة من الذاكرة
+    const messages = translations[locale] || translations[defaultLocale];
 
     return NextResponse.json({
       success: true,
