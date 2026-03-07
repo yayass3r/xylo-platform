@@ -148,13 +148,6 @@ export default function LoginPage() {
                   تذكرني
                 </Label>
               </div>
-
-              {/* Admin credentials hint */}
-              <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-sm">
-                <p className="font-medium text-violet-700 mb-1">بيانات المسؤول:</p>
-                <p className="text-violet-600" dir="ltr">البريد: 409yas@gmail.com</p>
-                <p className="text-violet-600" dir="ltr">كلمة المرور: Admin@1412Yasser</p>
-              </div>
             </CardContent>
 
             <CardFooter className="flex flex-col gap-4">

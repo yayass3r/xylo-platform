@@ -1,74 +1,62 @@
-import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import * as jwt from 'jsonwebtoken';
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make your application
-  // vulnerable to attacks.
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { pathname } = request.nextUrl;
+  
+  // Get token from cookies or authorization header
+  const token = request.cookies.get('token')?.value || 
+                request.headers.get('authorization')?.replace('Bearer ', '');
+  
+  let user = null;
+  
+  if (token) {
+    try {
+      const secret = process.env.JWT_SECRET || 'xylo-super-secret-jwt-key-change-in-production-2024';
+      user = jwt.verify(token, secret) as { userId: string; email: string; role: string };
+    } catch {
+      // Token is invalid or expired
+      user = null;
+    }
+  }
 
   // Protected routes
-  const protectedPaths = ['/admin', '/writer', '/wallet', '/settings'];
-  const isProtectedPath = protectedPaths.some((path) => request.nextUrl.pathname.startsWith(path));
+  const protectedPaths = ['/admin', '/wallet', '/settings', '/messages'];
+  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
 
   if (isProtectedPath && !user) {
-    // Redirect to login if not authenticated
     const url = request.nextUrl.clone();
     url.pathname = '/auth/login';
-    url.searchParams.set('redirect', request.nextUrl.pathname);
+    url.searchParams.set('redirect', pathname);
     return NextResponse.redirect(url);
   }
 
   // Admin-only routes
-  if (request.nextUrl.pathname.startsWith('/admin') && user) {
-    // Check if user has admin role (from metadata or database)
-    const isAdmin = user.user_metadata?.role === 'ADMIN';
-    if (!isAdmin) {
+  if (pathname.startsWith('/admin') && user) {
+    if (user.role !== 'ADMIN') {
       const url = request.nextUrl.clone();
       url.pathname = '/';
       return NextResponse.redirect(url);
     }
   }
 
-  // Writer-only routes
-  if (request.nextUrl.pathname.startsWith('/writer') && user) {
-    const isWriter = ['WRITER', 'ADMIN'].includes(user.user_metadata?.role);
-    if (!isWriter) {
+  // Writer-only routes (writers and admins)
+  if (pathname.startsWith('/writer') && user) {
+    if (!['WRITER', 'ADMIN'].includes(user.role)) {
       const url = request.nextUrl.clone();
       url.pathname = '/';
       return NextResponse.redirect(url);
     }
   }
 
-  return supabaseResponse;
+  // If logged in user tries to access login/register pages, redirect to home
+  if (user && (pathname === '/auth/login' || pathname === '/auth/register')) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
@@ -81,6 +69,6 @@ export const config = {
      * - public folder
      * - api routes (handled separately)
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
