@@ -8,7 +8,6 @@ import {
   Users,
   FileText,
   DollarSign,
-  AlertTriangle,
   Settings,
   BarChart3,
   Gift,
@@ -21,6 +20,8 @@ import {
   Ban,
   Loader2,
   Activity,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // Types
 interface AdminStats {
@@ -100,46 +102,95 @@ interface Withdrawal {
   createdAt: string;
 }
 
+// Loading Skeleton Component
+function LoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-slate-50" dir="rtl">
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-violet-600 mx-auto mb-4" />
+          <p className="text-muted-foreground">جاري تحميل لوحة الإدارة...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Stats Card Skeleton
+function StatsCardSkeleton() {
+  return (
+    <Card>
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-4 w-20 bg-slate-200 rounded animate-pulse" />
+            <div className="h-8 w-16 bg-slate-200 rounded animate-pulse" />
+            <div className="h-3 w-24 bg-slate-200 rounded animate-pulse" />
+          </div>
+          <div className="w-12 h-12 bg-slate-200 rounded-xl animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; role: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
 
-  // Check auth
+  // Check auth - runs only on mount
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    
-    if (!userData || !token) {
-      router.push('/auth/login');
-      return;
-    }
+    const checkAuth = () => {
+      try {
+        const userData = localStorage.getItem('user');
+        const token = localStorage.getItem('token');
 
-    try {
-      const parsedUser = JSON.parse(userData);
-      if (parsedUser.role !== 'ADMIN') {
-        router.push('/');
-        return;
+        if (!userData || !token) {
+          router.push('/auth/login');
+          return;
+        }
+
+        const parsedUser = JSON.parse(userData);
+        if (parsedUser?.role !== 'ADMIN') {
+          router.push('/');
+          return;
+        }
+
+        setUser(parsedUser);
+      } catch (err) {
+        console.error('Auth check error:', err);
+        router.push('/auth/login');
+      } finally {
+        setIsAuthChecking(false);
       }
-      setUser(parsedUser);
-    } catch {
-      router.push('/auth/login');
-    }
+    };
+
+    checkAuth();
   }, [router]);
 
   // Fetch data
   const fetchData = useCallback(async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
-    const token = localStorage.getItem('token');
+    setError(null);
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      setError('يرجى تسجيل الدخول مرة أخرى');
+      setIsLoading(false);
+      return;
+    }
 
     try {
       // Fetch stats
@@ -148,7 +199,9 @@ export default function AdminDashboard() {
       });
       if (statsRes.ok) {
         const statsData = await statsRes.json();
-        if (statsData.success) setStats(statsData.data);
+        if (statsData?.success && statsData?.data) {
+          setStats(statsData.data);
+        }
       }
 
       // Fetch users
@@ -157,7 +210,9 @@ export default function AdminDashboard() {
       });
       if (usersRes.ok) {
         const usersData = await usersRes.json();
-        if (usersData.success) setUsers(usersData.data);
+        if (usersData?.success && Array.isArray(usersData?.data)) {
+          setUsers(usersData.data);
+        }
       }
 
       // Fetch pending withdrawals
@@ -166,28 +221,37 @@ export default function AdminDashboard() {
       });
       if (withdrawalsRes.ok) {
         const withdrawalsData = await withdrawalsRes.json();
-        if (withdrawalsData.success) setWithdrawals(withdrawalsData.data);
+        if (withdrawalsData?.success && Array.isArray(withdrawalsData?.data)) {
+          setWithdrawals(withdrawalsData.data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
+      setError('حدث خطأ أثناء تحميل البيانات. يرجى المحاولة مرة أخرى.');
     } finally {
       setIsLoading(false);
     }
   }, [user]);
 
   useEffect(() => {
-    if (user) fetchData();
-  }, [user, fetchData]);
+    if (user && !isAuthChecking) {
+      fetchData();
+    }
+  }, [user, isAuthChecking, fetchData]);
 
   // Approve withdrawal
   const handleApproveWithdrawal = async (id: string) => {
-    const token = localStorage.getItem('token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
     try {
       const res = await fetch(`/api/admin/withdrawals/${id}/approve`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        fetchData();
+      }
     } catch (err) {
       console.error('Failed to approve withdrawal:', err);
     }
@@ -195,13 +259,17 @@ export default function AdminDashboard() {
 
   // Reject withdrawal
   const handleRejectWithdrawal = async (id: string) => {
-    const token = localStorage.getItem('token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
     try {
       const res = await fetch(`/api/admin/withdrawals/${id}/reject`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        fetchData();
+      }
     } catch (err) {
       console.error('Failed to reject withdrawal:', err);
     }
@@ -209,9 +277,11 @@ export default function AdminDashboard() {
 
   // Toggle user status
   const handleToggleUserStatus = async (userId: string, currentStatus: string) => {
-    const token = localStorage.getItem('token');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
     const newStatus = currentStatus === 'ACTIVE' ? 'BANNED' : 'ACTIVE';
-    
+
     try {
       const res = await fetch(`/api/admin/users/${userId}/status`, {
         method: 'PATCH',
@@ -221,18 +291,22 @@ export default function AdminDashboard() {
         },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (res.ok) fetchData();
+      if (res.ok) {
+        fetchData();
+      }
     } catch (err) {
       console.error('Failed to update user status:', err);
     }
   };
 
-  if (!user || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
-      </div>
-    );
+  // Show loading skeleton during auth check
+  if (isAuthChecking) {
+    return <LoadingSkeleton />;
+  }
+
+  // Don't render if not authenticated
+  if (!user) {
+    return <LoadingSkeleton />;
   }
 
   const menuItems = [
@@ -242,11 +316,12 @@ export default function AdminDashboard() {
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ];
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = !searchQuery || 
-      u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+  const filteredUsers = users.filter((u) => {
+    const matchesSearch =
+      !searchQuery ||
+      u?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u?.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'all' || u?.role === roleFilter;
     return matchesSearch && matchesRole;
   });
 
@@ -305,85 +380,116 @@ export default function AdminDashboard() {
         <header className="bg-white border-b sticky top-0 z-40">
           <div className="flex items-center justify-between px-6 py-4">
             <h1 className="text-2xl font-bold">لوحة الإدارة</h1>
-            <Button variant="ghost" asChild>
-              <Link href="/" className="gap-2">
-                <ChevronLeft className="w-4 h-4" />
-                الرئيسية
-              </Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={isLoading}>
+                <RefreshCw className={`w-4 h-4 ml-2 ${isLoading ? 'animate-spin' : ''}`} />
+                تحديث
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link href="/" className="gap-2">
+                  <ChevronLeft className="w-4 h-4" />
+                  الرئيسية
+                </Link>
+              </Button>
+            </div>
           </div>
         </header>
 
         <div className="p-6">
+          {/* Error Alert */}
+          {error && (
+            <Alert variant="destructive" className="mb-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>خطأ</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Stats Grid */}
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">المستخدمين</p>
-                        <p className="text-2xl font-bold">{(stats?.users.total || 0).toLocaleString()}</p>
-                        <p className="text-xs text-green-600 mt-1">
-                          +{stats?.users.newThisMonth || 0} هذا الشهر
-                        </p>
+              {isLoading ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[...Array(4)].map((_, i) => (
+                    <StatsCardSkeleton key={i} />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">المستخدمين</p>
+                          <p className="text-2xl font-bold">
+                            {(stats?.users?.total ?? 0).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-green-600 mt-1">
+                            +{stats?.users?.newThisMonth ?? 0} هذا الشهر
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
+                          <Users className="w-6 h-6 text-violet-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
-                        <Users className="w-6 h-6 text-violet-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">المقالات</p>
-                        <p className="text-2xl font-bold">{(stats?.articles.total || 0).toLocaleString()}</p>
-                        <p className="text-xs text-amber-600 mt-1">
-                          {stats?.articles.pending || 0} قيد المراجعة
-                        </p>
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">المقالات</p>
+                          <p className="text-2xl font-bold">
+                            {(stats?.articles?.total ?? 0).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-amber-600 mt-1">
+                            {stats?.articles?.pending ?? 0} قيد المراجعة
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-indigo-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                        <FileText className="w-6 h-6 text-indigo-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">الهدايا</p>
-                        <p className="text-2xl font-bold">{(stats?.gifts.total || 0).toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground mt-1">إجمالي الهدايا</p>
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">الهدايا</p>
+                          <p className="text-2xl font-bold">
+                            {(stats?.gifts?.total ?? 0).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">إجمالي الهدايا</p>
+                        </div>
+                        <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                          <Gift className="w-6 h-6 text-amber-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                        <Gift className="w-6 h-6 text-amber-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">الإيرادات</p>
-                        <p className="text-2xl font-bold">${(stats?.revenue.total || 0).toFixed(2)}</p>
-                        <p className="text-xs text-muted-foreground mt-1">إجمالي الإيرادات</p>
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">الإيرادات</p>
+                          <p className="text-2xl font-bold">
+                            ${(stats?.revenue?.total ?? 0).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">إجمالي الإيرادات</p>
+                        </div>
+                        <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                          <DollarSign className="w-6 h-6 text-green-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                        <DollarSign className="w-6 h-6 text-green-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               {/* Pending Actions */}
               <div className="grid md:grid-cols-3 gap-4">
@@ -394,7 +500,7 @@ export default function AdminDashboard() {
                         <Clock className="w-5 h-5 text-amber-600" />
                         <span>طلبات سحب معلقة</span>
                       </div>
-                      <Badge className="bg-amber-600">{stats?.withdrawals.pending || 0}</Badge>
+                      <Badge className="bg-amber-600">{stats?.withdrawals?.pending ?? 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -406,7 +512,7 @@ export default function AdminDashboard() {
                         <FileText className="w-5 h-5 text-violet-600" />
                         <span>مقالات قيد المراجعة</span>
                       </div>
-                      <Badge className="bg-violet-600">{stats?.articles.pending || 0}</Badge>
+                      <Badge className="bg-violet-600">{stats?.articles?.pending ?? 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -418,7 +524,7 @@ export default function AdminDashboard() {
                         <Ban className="w-5 h-5 text-red-600" />
                         <span>مستخدمين محظورين</span>
                       </div>
-                      <Badge className="bg-red-600">{stats?.users.banned || 0}</Badge>
+                      <Badge className="bg-red-600">{stats?.users?.banned ?? 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -437,29 +543,41 @@ export default function AdminDashboard() {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between py-2 border-b">
                         <span>إجمالي الكتاب</span>
-                        <span className="font-bold">{(stats?.users.writers || 0).toLocaleString()}</span>
+                        <span className="font-bold">
+                          {(stats?.users?.writers ?? 0).toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between py-2 border-b">
                         <span>إجمالي القراء</span>
-                        <span className="font-bold">{(stats?.users.readers || 0).toLocaleString()}</span>
+                        <span className="font-bold">
+                          {(stats?.users?.readers ?? 0).toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between py-2">
                         <span>المستخدمين النشطين</span>
-                        <span className="font-bold text-green-600">{(stats?.users.active || 0).toLocaleString()}</span>
+                        <span className="font-bold text-green-600">
+                          {(stats?.users?.active ?? 0).toLocaleString()}
+                        </span>
                       </div>
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between py-2 border-b">
                         <span>إجمالي المشاهدات</span>
-                        <span className="font-bold">{(stats?.articles.totalViews || 0).toLocaleString()}</span>
+                        <span className="font-bold">
+                          {(stats?.articles?.totalViews ?? 0).toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between py-2 border-b">
                         <span>إجمالي الألماس المرسل</span>
-                        <span className="font-bold text-amber-600">{(stats?.gifts.totalDiamonds || 0).toLocaleString()}</span>
+                        <span className="font-bold text-amber-600">
+                          {(stats?.gifts?.totalDiamonds ?? 0).toLocaleString()}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between py-2">
                         <span>إجمالي السحوبات المدفوعة</span>
-                        <span className="font-bold">${(stats?.withdrawals.totalPaid || 0).toFixed(2)}</span>
+                        <span className="font-bold">
+                          ${(stats?.withdrawals?.totalPaid ?? 0).toFixed(2)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -472,17 +590,17 @@ export default function AdminDashboard() {
           {activeTab === 'users' && (
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <CardTitle>إدارة المستخدمين</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Input 
-                      placeholder="بحث..." 
-                      className="w-64"
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    <Input
+                      placeholder="بحث..."
+                      className="w-full sm:w-64"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                     <Select value={roleFilter} onValueChange={setRoleFilter}>
-                      <SelectTrigger className="w-32">
+                      <SelectTrigger className="w-full sm:w-32">
                         <SelectValue placeholder="الدور" />
                       </SelectTrigger>
                       <SelectContent>
@@ -496,86 +614,90 @@ export default function AdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                {filteredUsers.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    لا يوجد مستخدمين
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
                   </div>
+                ) : filteredUsers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">لا يوجد مستخدمين</div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>المستخدم</TableHead>
-                        <TableHead>الدور</TableHead>
-                        <TableHead>الحالة</TableHead>
-                        <TableHead>المقالات</TableHead>
-                        <TableHead>الهدايا</TableHead>
-                        <TableHead>الإجراءات</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredUsers.slice(0, 20).map((u) => (
-                        <TableRow key={u.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <Avatar>
-                                <AvatarImage src={u.avatar || undefined} />
-                                <AvatarFallback>{u.name?.[0] || 'U'}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <div className="font-medium">{u.name || u.username}</div>
-                                <div className="text-sm text-muted-foreground">{u.email}</div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                u.role === 'ADMIN'
-                                  ? 'default'
-                                  : u.role === 'WRITER'
-                                    ? 'secondary'
-                                    : 'outline'
-                              }
-                            >
-                              {u.role === 'ADMIN' ? 'مسؤول' : u.role === 'WRITER' ? 'كاتب' : 'مستخدم'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                u.status === 'ACTIVE'
-                                  ? 'bg-green-100 text-green-700'
-                                  : u.status === 'SUSPENDED'
-                                    ? 'bg-amber-100 text-amber-700'
-                                    : 'bg-red-100 text-red-700'
-                              }
-                            >
-                              {u.status === 'ACTIVE' ? 'نشط' : u.status === 'SUSPENDED' ? 'معلق' : 'محظور'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{u.articles}</TableCell>
-                          <TableCell>{u.gifts}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button size="sm" variant="ghost" asChild>
-                                <Link href={`/user/${u.username}`}>
-                                  <Eye className="w-4 h-4" />
-                                </Link>
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                className={u.status === 'BANNED' ? 'text-green-600' : 'text-red-600'}
-                                onClick={() => handleToggleUserStatus(u.id, u.status)}
-                              >
-                                <Ban className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>المستخدم</TableHead>
+                          <TableHead>الدور</TableHead>
+                          <TableHead>الحالة</TableHead>
+                          <TableHead>المقالات</TableHead>
+                          <TableHead>الهدايا</TableHead>
+                          <TableHead>الإجراءات</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredUsers.slice(0, 20).map((u) => (
+                          <TableRow key={u?.id || Math.random()}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar>
+                                  <AvatarImage src={u?.avatar || undefined} />
+                                  <AvatarFallback>{u?.name?.[0] || 'U'}</AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <div className="font-medium">{u?.name || u?.username || 'مستخدم'}</div>
+                                  <div className="text-sm text-muted-foreground">{u?.email || '-'}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  u?.role === 'ADMIN'
+                                    ? 'default'
+                                    : u?.role === 'WRITER'
+                                      ? 'secondary'
+                                      : 'outline'
+                                }
+                              >
+                                {u?.role === 'ADMIN' ? 'مسؤول' : u?.role === 'WRITER' ? 'كاتب' : 'مستخدم'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                className={
+                                  u?.status === 'ACTIVE'
+                                    ? 'bg-green-100 text-green-700'
+                                    : u?.status === 'SUSPENDED'
+                                      ? 'bg-amber-100 text-amber-700'
+                                      : 'bg-red-100 text-red-700'
+                                }
+                              >
+                                {u?.status === 'ACTIVE' ? 'نشط' : u?.status === 'SUSPENDED' ? 'معلق' : 'محظور'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{u?.articles ?? 0}</TableCell>
+                            <TableCell>{u?.gifts ?? 0}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link href={`/user/${u?.username || u?.id}`}>
+                                    <Eye className="w-4 h-4" />
+                                  </Link>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className={u?.status === 'BANNED' ? 'text-green-600' : 'text-red-600'}
+                                  onClick={() => handleToggleUserStatus(u?.id, u?.status)}
+                                >
+                                  <Ban className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -588,59 +710,69 @@ export default function AdminDashboard() {
                 <CardTitle>طلبات السحب المعلقة</CardTitle>
               </CardHeader>
               <CardContent>
-                {withdrawals.length === 0 ? (
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+                  </div>
+                ) : withdrawals.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     لا توجد طلبات سحب معلقة
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>المستخدم</TableHead>
-                        <TableHead>الألماس</TableHead>
-                        <TableHead>القيمة</TableHead>
-                        <TableHead>صافي المبلغ</TableHead>
-                        <TableHead>التاريخ</TableHead>
-                        <TableHead>الإجراءات</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {withdrawals.map((w) => (
-                        <TableRow key={w.id}>
-                          <TableCell>
-                            <div>
-                              <div className="font-medium">{w.user.name || 'مستخدم'}</div>
-                              <div className="text-sm text-muted-foreground">{w.user.email}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell>{w.diamondAmount.toLocaleString()}</TableCell>
-                          <TableCell>${w.usdValue.toFixed(2)}</TableCell>
-                          <TableCell className="font-bold text-green-600">${w.netAmount.toFixed(2)}</TableCell>
-                          <TableCell>{new Date(w.createdAt).toLocaleDateString('ar-SA')}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button 
-                                size="sm" 
-                                className="bg-green-600 hover:bg-green-700"
-                                onClick={() => handleApproveWithdrawal(w.id)}
-                              >
-                                <CheckCircle className="w-4 h-4 ml-1" />
-                                موافقة
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="destructive"
-                                onClick={() => handleRejectWithdrawal(w.id)}
-                              >
-                                <XCircle className="w-4 h-4 ml-1" />
-                                رفض
-                              </Button>
-                            </div>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>المستخدم</TableHead>
+                          <TableHead>الألماس</TableHead>
+                          <TableHead>القيمة</TableHead>
+                          <TableHead>صافي المبلغ</TableHead>
+                          <TableHead>التاريخ</TableHead>
+                          <TableHead>الإجراءات</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {withdrawals.map((w) => (
+                          <TableRow key={w?.id || Math.random()}>
+                            <TableCell>
+                              <div>
+                                <div className="font-medium">{w?.user?.name || 'مستخدم'}</div>
+                                <div className="text-sm text-muted-foreground">{w?.user?.email || '-'}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell>{(w?.diamondAmount ?? 0).toLocaleString()}</TableCell>
+                            <TableCell>${(w?.usdValue ?? 0).toFixed(2)}</TableCell>
+                            <TableCell className="font-bold text-green-600">
+                              ${(w?.netAmount ?? 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              {w?.createdAt ? new Date(w.createdAt).toLocaleDateString('ar-SA') : '-'}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700"
+                                  onClick={() => handleApproveWithdrawal(w?.id)}
+                                >
+                                  <CheckCircle className="w-4 h-4 ml-1" />
+                                  موافقة
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleRejectWithdrawal(w?.id)}
+                                >
+                                  <XCircle className="w-4 h-4 ml-1" />
+                                  رفض
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -682,19 +814,25 @@ export default function AdminDashboard() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between py-2 border-b">
                     <span>إجمالي المشاهدات</span>
-                    <span className="font-bold">{(stats?.articles.totalViews || 0).toLocaleString()}</span>
+                    <span className="font-bold">
+                      {(stats?.articles?.totalViews ?? 0).toLocaleString()}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b">
                     <span>إجمالي الهدايا المرسلة</span>
-                    <span className="font-bold">{(stats?.gifts.total || 0).toLocaleString()}</span>
+                    <span className="font-bold">{(stats?.gifts?.total ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b">
                     <span>إجمالي الألماس المتداول</span>
-                    <span className="font-bold text-amber-600">{(stats?.gifts.totalDiamonds || 0).toLocaleString()}</span>
+                    <span className="font-bold text-amber-600">
+                      {(stats?.gifts?.totalDiamonds ?? 0).toLocaleString()}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between py-2">
                     <span>إجمالي الإيرادات</span>
-                    <span className="font-bold text-green-600">${(stats?.revenue.total || 0).toFixed(2)}</span>
+                    <span className="font-bold text-green-600">
+                      ${(stats?.revenue?.total ?? 0).toFixed(2)}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
