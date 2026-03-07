@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken } from './auth';
-import { createClient } from './supabase/server';
-import { prisma } from './db';
 
 /**
  * استخراج Token من الطلب
@@ -22,38 +20,9 @@ export function extractToken(request: NextRequest): string | null {
 }
 
 /**
- * التحقق من المصادقة (يدعم JWT و Supabase)
+ * التحقق من المصادقة (JWT فقط)
  */
 export async function withAuth(request: NextRequest) {
-  // أولاً: محاولة التحقق من Supabase Auth
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user: supabaseUser },
-    } = await supabase.auth.getUser();
-
-    if (supabaseUser) {
-      // البحث عن المستخدم في قاعدة البيانات المحلية
-      const dbUser = await prisma.user.findUnique({
-        where: { email: supabaseUser.email! },
-        include: { wallet: true, kycVerification: true },
-      });
-
-      if (dbUser) {
-        return {
-          authenticated: true,
-          error: null,
-          user: dbUser,
-          supabaseUser,
-        };
-      }
-    }
-  } catch (error) {
-    // Supabase auth failed, continue with JWT
-    console.log('Supabase auth check failed, trying JWT...');
-  }
-
-  // ثانياً: محاولة التحقق من JWT
   const token = extractToken(request);
   if (!token) {
     return {
@@ -63,7 +32,6 @@ export async function withAuth(request: NextRequest) {
         { status: 401 },
       ),
       user: null,
-      supabaseUser: null,
     };
   }
 
@@ -76,7 +44,6 @@ export async function withAuth(request: NextRequest) {
         { status: 401 },
       ),
       user: null,
-      supabaseUser: null,
     };
   }
 
@@ -84,7 +51,6 @@ export async function withAuth(request: NextRequest) {
     authenticated: true,
     error: null,
     user,
-    supabaseUser: null,
   };
 }
 
@@ -105,7 +71,6 @@ export async function withAdminAuth(request: NextRequest) {
         { status: 403 },
       ),
       user: null,
-      supabaseUser: null,
     };
   }
 
@@ -130,7 +95,6 @@ export async function withWriterAuth(request: NextRequest) {
         { status: 403 },
       ),
       user: null,
-      supabaseUser: null,
     };
   }
 
@@ -155,7 +119,6 @@ export async function withActiveUser(request: NextRequest) {
         { status: 403 },
       ),
       user: null,
-      supabaseUser: null,
     };
   }
 
@@ -167,7 +130,6 @@ export async function withActiveUser(request: NextRequest) {
         { status: 403 },
       ),
       user: null,
-      supabaseUser: null,
     };
   }
 
