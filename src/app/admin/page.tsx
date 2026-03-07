@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -12,21 +12,20 @@ import {
   Settings,
   BarChart3,
   Gift,
-  TrendingUp,
+  ChevronLeft,
+  Menu,
   Clock,
   CheckCircle,
   XCircle,
-  Activity,
   Eye,
   Ban,
-  ChevronLeft,
-  Menu,
+  Loader2,
+  Activity,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -44,69 +43,194 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 
-// بيانات تجريبية
-const mockStats = {
-  totalUsers: 12450,
-  newUsersToday: 156,
-  activeWriters: 892,
-  totalArticles: 34560,
-  publishedArticles: 28450,
-  pendingArticles: 234,
-  totalViews: 1250000,
-  totalGifts: 45670,
-  totalRevenue: 125000,
-  pendingWithdrawals: 45,
-  pendingKyc: 23,
-  pendingReports: 12,
-};
+// Types
+interface AdminStats {
+  users: {
+    total: number;
+    writers: number;
+    readers: number;
+    active: number;
+    banned: number;
+    newThisMonth: number;
+  };
+  articles: {
+    total: number;
+    published: number;
+    pending: number;
+    draft: number;
+    totalViews: number;
+  };
+  gifts: {
+    total: number;
+    totalDiamonds: number;
+    totalCoins: number;
+  };
+  withdrawals: {
+    pending: number;
+    totalPaid: number;
+  };
+  transactions: {
+    totalPurchased: number;
+  };
+  revenue: {
+    total: number;
+  };
+}
 
-const mockUsers = [
-  { id: '1', name: 'أحمد محمد', email: 'ahmed@email.com', role: 'WRITER', status: 'ACTIVE', articles: 45, gifts: 1250 },
-  { id: '2', name: 'سارة أحمد', email: 'sara@email.com', role: 'USER', status: 'ACTIVE', articles: 0, gifts: 0 },
-  { id: '3', name: 'محمد علي', email: 'mohamed@email.com', role: 'WRITER', status: 'SUSPENDED', articles: 32, gifts: 856 },
-];
+interface User {
+  id: string;
+  name: string | null;
+  email: string;
+  username: string | null;
+  avatar: string | null;
+  role: string;
+  status: string;
+  articles: number;
+  gifts: number;
+}
 
-const mockWithdrawals = [
-  { id: '1', user: 'أحمد محمد', amount: 500, status: 'PENDING', date: new Date() },
-  { id: '2', user: 'سارة أحمد', amount: 1200, status: 'PENDING', date: new Date() },
-];
-
-const mockReports = [
-  { id: '1', reporter: 'محمد', reported: 'سارة', reason: 'محتوى غير لائق', status: 'PENDING' },
-  { id: '2', reporter: 'أحمد', reported: 'خالد', reason: 'انتحال شخصية', status: 'REVIEWING' },
-];
+interface Withdrawal {
+  id: string;
+  userId: string;
+  user: { name: string | null; email: string };
+  diamondAmount: number;
+  usdValue: number;
+  netAmount: number;
+  status: string;
+  createdAt: string;
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<{ role: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; role: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
 
+  // Check auth
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-        if (parsedUser.role !== 'ADMIN') {
-          router.push('/');
-        } else {
-          // Use requestAnimationFrame to avoid synchronous setState
-          requestAnimationFrame(() => {
-            setUser(parsedUser);
-          });
-        }
-      } catch {
-        router.push('/auth/login');
+    const token = localStorage.getItem('token');
+    
+    if (!userData || !token) {
+      router.push('/auth/login');
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(userData);
+      if (parsedUser.role !== 'ADMIN') {
+        router.push('/');
+        return;
       }
-    } else {
+      setUser(parsedUser);
+    } catch {
       router.push('/auth/login');
     }
   }, [router]);
 
-  if (!user) {
+  // Fetch data
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    const token = localStorage.getItem('token');
+
+    try {
+      // Fetch stats
+      const statsRes = await fetch('/api/admin/stats', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        if (statsData.success) setStats(statsData.data);
+      }
+
+      // Fetch users
+      const usersRes = await fetch('/api/admin/users', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        if (usersData.success) setUsers(usersData.data);
+      }
+
+      // Fetch pending withdrawals
+      const withdrawalsRes = await fetch('/api/admin/withdrawals?status=PENDING', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (withdrawalsRes.ok) {
+        const withdrawalsData = await withdrawalsRes.json();
+        if (withdrawalsData.success) setWithdrawals(withdrawalsData.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) fetchData();
+  }, [user, fetchData]);
+
+  // Approve withdrawal
+  const handleApproveWithdrawal = async (id: string) => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/admin/withdrawals/${id}/approve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Failed to approve withdrawal:', err);
+    }
+  };
+
+  // Reject withdrawal
+  const handleRejectWithdrawal = async (id: string) => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/admin/withdrawals/${id}/reject`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Failed to reject withdrawal:', err);
+    }
+  };
+
+  // Toggle user status
+  const handleToggleUserStatus = async (userId: string, currentStatus: string) => {
+    const token = localStorage.getItem('token');
+    const newStatus = currentStatus === 'ACTIVE' ? 'BANNED' : 'ACTIVE';
+    
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) fetchData();
+    } catch (err) {
+      console.error('Failed to update user status:', err);
+    }
+  };
+
+  if (!user || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600"></div>
+        <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
       </div>
     );
   }
@@ -114,12 +238,17 @@ export default function AdminDashboard() {
   const menuItems = [
     { id: 'overview', label: 'نظرة عامة', icon: BarChart3 },
     { id: 'users', label: 'المستخدمين', icon: Users },
-    { id: 'articles', label: 'المقالات', icon: FileText },
     { id: 'withdrawals', label: 'طلبات السحب', icon: DollarSign },
-    { id: 'kyc', label: 'التحقق KYC', icon: CheckCircle },
-    { id: 'reports', label: 'البلاغات', icon: AlertTriangle },
     { id: 'settings', label: 'الإعدادات', icon: Settings },
   ];
+
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = !searchQuery || 
+      u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
@@ -196,9 +325,9 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">المستخدمين</p>
-                        <p className="text-2xl font-bold">{mockStats.totalUsers.toLocaleString()}</p>
+                        <p className="text-2xl font-bold">{(stats?.users.total || 0).toLocaleString()}</p>
                         <p className="text-xs text-green-600 mt-1">
-                          +{mockStats.newUsersToday} اليوم
+                          +{stats?.users.newThisMonth || 0} هذا الشهر
                         </p>
                       </div>
                       <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
@@ -213,9 +342,9 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">المقالات</p>
-                        <p className="text-2xl font-bold">{mockStats.totalArticles.toLocaleString()}</p>
+                        <p className="text-2xl font-bold">{(stats?.articles.total || 0).toLocaleString()}</p>
                         <p className="text-xs text-amber-600 mt-1">
-                          {mockStats.pendingArticles} قيد المراجعة
+                          {stats?.articles.pending || 0} قيد المراجعة
                         </p>
                       </div>
                       <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
@@ -230,7 +359,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">الهدايا</p>
-                        <p className="text-2xl font-bold">{mockStats.totalGifts.toLocaleString()}</p>
+                        <p className="text-2xl font-bold">{(stats?.gifts.total || 0).toLocaleString()}</p>
                         <p className="text-xs text-muted-foreground mt-1">إجمالي الهدايا</p>
                       </div>
                       <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
@@ -245,7 +374,7 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-muted-foreground">الإيرادات</p>
-                        <p className="text-2xl font-bold">${mockStats.totalRevenue.toLocaleString()}</p>
+                        <p className="text-2xl font-bold">${(stats?.revenue.total || 0).toFixed(2)}</p>
                         <p className="text-xs text-muted-foreground mt-1">إجمالي الإيرادات</p>
                       </div>
                       <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -265,19 +394,19 @@ export default function AdminDashboard() {
                         <Clock className="w-5 h-5 text-amber-600" />
                         <span>طلبات سحب معلقة</span>
                       </div>
-                      <Badge className="bg-amber-600">{mockStats.pendingWithdrawals}</Badge>
+                      <Badge className="bg-amber-600">{stats?.withdrawals.pending || 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="border-blue-200 bg-blue-50">
+                <Card className="border-violet-200 bg-violet-50">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <CheckCircle className="w-5 h-5 text-blue-600" />
-                        <span>طلبات KYC معلقة</span>
+                        <FileText className="w-5 h-5 text-violet-600" />
+                        <span>مقالات قيد المراجعة</span>
                       </div>
-                      <Badge className="bg-blue-600">{mockStats.pendingKyc}</Badge>
+                      <Badge className="bg-violet-600">{stats?.articles.pending || 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -286,10 +415,10 @@ export default function AdminDashboard() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <AlertTriangle className="w-5 h-5 text-red-600" />
-                        <span>بلاغات معلقة</span>
+                        <Ban className="w-5 h-5 text-red-600" />
+                        <span>مستخدمين محظورين</span>
                       </div>
-                      <Badge className="bg-red-600">{mockStats.pendingReports}</Badge>
+                      <Badge className="bg-red-600">{stats?.users.banned || 0}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -300,26 +429,39 @@ export default function AdminDashboard() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Activity className="w-5 h-5" />
-                    النشاط الأخير
+                    إحصائيات سريعة
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      { action: 'مستخدم جديد', user: 'خالد محمد', time: 'منذ 5 دقائق' },
-                      { action: 'مقال جديد', user: 'أحمد علي', time: 'منذ 15 دقيقة' },
-                      { action: 'طلب سحب', user: 'سارة أحمد', time: 'منذ 30 دقيقة' },
-                      { action: 'بلاغ جديد', user: 'محمد خالد', time: 'منذ ساعة' },
-                    ].map((item, i) => (
-                      <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 bg-violet-600 rounded-full" />
-                          <span>{item.action}</span>
-                          <span className="text-muted-foreground">- {item.user}</span>
-                        </div>
-                        <span className="text-sm text-muted-foreground">{item.time}</span>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span>إجمالي الكتاب</span>
+                        <span className="font-bold">{(stats?.users.writers || 0).toLocaleString()}</span>
                       </div>
-                    ))}
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span>إجمالي القراء</span>
+                        <span className="font-bold">{(stats?.users.readers || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span>المستخدمين النشطين</span>
+                        <span className="font-bold text-green-600">{(stats?.users.active || 0).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span>إجمالي المشاهدات</span>
+                        <span className="font-bold">{(stats?.articles.totalViews || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span>إجمالي الألماس المرسل</span>
+                        <span className="font-bold text-amber-600">{(stats?.gifts.totalDiamonds || 0).toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span>إجمالي السحوبات المدفوعة</span>
+                        <span className="font-bold">${(stats?.withdrawals.totalPaid || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -333,8 +475,13 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <CardTitle>إدارة المستخدمين</CardTitle>
                   <div className="flex items-center gap-2">
-                    <Input placeholder="بحث..." className="w-64" />
-                    <Select defaultValue="all">
+                    <Input 
+                      placeholder="بحث..." 
+                      className="w-64"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    <Select value={roleFilter} onValueChange={setRoleFilter}>
                       <SelectTrigger className="w-32">
                         <SelectValue placeholder="الدور" />
                       </SelectTrigger>
@@ -349,73 +496,87 @@ export default function AdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>المستخدم</TableHead>
-                      <TableHead>الدور</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>المقالات</TableHead>
-                      <TableHead>الهدايا</TableHead>
-                      <TableHead>الإجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockUsers.map((u) => (
-                      <TableRow key={u.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarFallback>{u.name[0]}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="font-medium">{u.name}</div>
-                              <div className="text-sm text-muted-foreground">{u.email}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              u.role === 'ADMIN'
-                                ? 'default'
-                                : u.role === 'WRITER'
-                                  ? 'secondary'
-                                  : 'outline'
-                            }
-                          >
-                            {u.role === 'ADMIN' ? 'مسؤول' : u.role === 'WRITER' ? 'كاتب' : 'مستخدم'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              u.status === 'ACTIVE'
-                                ? 'bg-green-100 text-green-700'
-                                : u.status === 'SUSPENDED'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-red-100 text-red-700'
-                            }
-                          >
-                            {u.status === 'ACTIVE' ? 'نشط' : u.status === 'SUSPENDED' ? 'معلق' : 'محظور'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{u.articles}</TableCell>
-                        <TableCell>{u.gifts}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" variant="ghost">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button size="sm" variant="ghost">
-                              <Ban className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                {filteredUsers.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    لا يوجد مستخدمين
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>المستخدم</TableHead>
+                        <TableHead>الدور</TableHead>
+                        <TableHead>الحالة</TableHead>
+                        <TableHead>المقالات</TableHead>
+                        <TableHead>الهدايا</TableHead>
+                        <TableHead>الإجراءات</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredUsers.slice(0, 20).map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar>
+                                <AvatarImage src={u.avatar || undefined} />
+                                <AvatarFallback>{u.name?.[0] || 'U'}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <div className="font-medium">{u.name || u.username}</div>
+                                <div className="text-sm text-muted-foreground">{u.email}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                u.role === 'ADMIN'
+                                  ? 'default'
+                                  : u.role === 'WRITER'
+                                    ? 'secondary'
+                                    : 'outline'
+                              }
+                            >
+                              {u.role === 'ADMIN' ? 'مسؤول' : u.role === 'WRITER' ? 'كاتب' : 'مستخدم'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={
+                                u.status === 'ACTIVE'
+                                  ? 'bg-green-100 text-green-700'
+                                  : u.status === 'SUSPENDED'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-red-100 text-red-700'
+                              }
+                            >
+                              {u.status === 'ACTIVE' ? 'نشط' : u.status === 'SUSPENDED' ? 'معلق' : 'محظور'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{u.articles}</TableCell>
+                          <TableCell>{u.gifts}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" variant="ghost" asChild>
+                                <Link href={`/user/${u.username}`}>
+                                  <Eye className="w-4 h-4" />
+                                </Link>
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                className={u.status === 'BANNED' ? 'text-green-600' : 'text-red-600'}
+                                onClick={() => handleToggleUserStatus(u.id, u.status)}
+                              >
+                                <Ban className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           )}
@@ -427,88 +588,60 @@ export default function AdminDashboard() {
                 <CardTitle>طلبات السحب المعلقة</CardTitle>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>المستخدم</TableHead>
-                      <TableHead>المبلغ</TableHead>
-                      <TableHead>التاريخ</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>الإجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockWithdrawals.map((w) => (
-                      <TableRow key={w.id}>
-                        <TableCell>{w.user}</TableCell>
-                        <TableCell>${w.amount}</TableCell>
-                        <TableCell>{w.date.toLocaleDateString('ar-SA')}</TableCell>
-                        <TableCell>
-                          <Badge className="bg-amber-100 text-amber-700">معلق</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                              <CheckCircle className="w-4 h-4 ml-1" />
-                              موافقة
-                            </Button>
-                            <Button size="sm" variant="destructive">
-                              <XCircle className="w-4 h-4 ml-1" />
-                              رفض
-                            </Button>
-                          </div>
-                        </TableCell>
+                {withdrawals.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    لا توجد طلبات سحب معلقة
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>المستخدم</TableHead>
+                        <TableHead>الألماس</TableHead>
+                        <TableHead>القيمة</TableHead>
+                        <TableHead>صافي المبلغ</TableHead>
+                        <TableHead>التاريخ</TableHead>
+                        <TableHead>الإجراءات</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Reports Tab */}
-          {activeTab === 'reports' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>البلاغات</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>المُبلِّغ</TableHead>
-                      <TableHead>المُبلَّغ عنه</TableHead>
-                      <TableHead>السبب</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>الإجراءات</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockReports.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell>{r.reporter}</TableCell>
-                        <TableCell>{r.reported}</TableCell>
-                        <TableCell>{r.reason}</TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              r.status === 'PENDING'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }
-                          >
-                            {r.status === 'PENDING' ? 'معلق' : 'قيد المراجعة'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="outline">
-                            مراجعة
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {withdrawals.map((w) => (
+                        <TableRow key={w.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">{w.user.name || 'مستخدم'}</div>
+                              <div className="text-sm text-muted-foreground">{w.user.email}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>{w.diamondAmount.toLocaleString()}</TableCell>
+                          <TableCell>${w.usdValue.toFixed(2)}</TableCell>
+                          <TableCell className="font-bold text-green-600">${w.netAmount.toFixed(2)}</TableCell>
+                          <TableCell>{new Date(w.createdAt).toLocaleDateString('ar-SA')}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                size="sm" 
+                                className="bg-green-600 hover:bg-green-700"
+                                onClick={() => handleApproveWithdrawal(w.id)}
+                              >
+                                <CheckCircle className="w-4 h-4 ml-1" />
+                                موافقة
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="destructive"
+                                onClick={() => handleRejectWithdrawal(w.id)}
+                              >
+                                <XCircle className="w-4 h-4 ml-1" />
+                                رفض
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
           )}
@@ -523,40 +656,45 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between py-2 border-b">
-                    <span>عمولة المنصة</span>
-                    <span className="font-bold text-violet-600">30%</span>
+                    <span>عمولة المنصة على السحوبات</span>
+                    <span className="font-bold text-violet-600">10%</span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b">
                     <span>الحد الأدنى للسحب</span>
-                    <span className="font-bold">1000 ألماس</span>
+                    <span className="font-bold">100 ألماس ($1)</span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b">
                     <span>سعر الألماس</span>
                     <span className="font-bold">100 ألماس = $1</span>
                   </div>
                   <div className="flex items-center justify-between py-2">
-                    <span>مراجعة المقالات تلقائياً</span>
-                    <Badge variant="secondary">معطّل</Badge>
+                    <span>قيمة الدولار الواحد</span>
+                    <span className="font-bold">100 عملة</span>
                   </div>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>إدارة الهدايا</CardTitle>
-                  <CardDescription>تعديل أسعار وقيم الهدايا</CardDescription>
+                  <CardTitle>إحصائيات المنصة</CardTitle>
+                  <CardDescription>ملخص عام عن المنصة</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {['❤️ قلب', '⭐ نجمة', '👑 تاج', '🚀 صاروخ'].map((gift, i) => (
-                      <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
-                        <span>{gift}</span>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-muted-foreground">التكلفة:</span>
-                          <span className="font-medium">{[10, 50, 100, 200][i]} عملة</span>
-                        </div>
-                      </div>
-                    ))}
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between py-2 border-b">
+                    <span>إجمالي المشاهدات</span>
+                    <span className="font-bold">{(stats?.articles.totalViews || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b">
+                    <span>إجمالي الهدايا المرسلة</span>
+                    <span className="font-bold">{(stats?.gifts.total || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b">
+                    <span>إجمالي الألماس المتداول</span>
+                    <span className="font-bold text-amber-600">{(stats?.gifts.totalDiamonds || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span>إجمالي الإيرادات</span>
+                    <span className="font-bold text-green-600">${(stats?.revenue.total || 0).toFixed(2)}</span>
                   </div>
                 </CardContent>
               </Card>

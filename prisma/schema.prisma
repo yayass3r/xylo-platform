@@ -179,6 +179,10 @@ model User {
   followers       Follow[] @relation("UserFollowers")
   following       Follow[] @relation("UserFollowing")
   oAuthAccounts   OAuthAccount[]
+  
+  // === Comment Relations ===
+  comments        Comment[]
+  commentLikes    CommentLike[]
 
   @@index([email])
   @@index([username])
@@ -214,12 +218,57 @@ model Article {
   gifts       SentGift[]
   reports     Report[]
   articleHashtags ArticleHashtag[]
+  comments    Comment[]
 
   @@index([slug])
   @@index([authorId])
   @@index([status])
   @@index([category])
   @@index([language])
+}
+
+// ==================== Comments ====================
+
+model Comment {
+  id          String   @id @default(cuid())
+  articleId   String
+  userId      String
+  parentId    String?                       // للردود على التعليقات
+  content     String   @db.Text
+  isEdited    Boolean  @default(false)
+  isDeleted   Boolean  @default(false)      // soft delete
+  likesCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  article     Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      Comment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies     Comment[] @relation("CommentReplies")
+  likes       CommentLike[]
+
+  @@index([articleId])
+  @@index([userId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+// ==================== Comment Likes ====================
+
+model CommentLike {
+  id          String   @id @default(cuid())
+  commentId   String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  // Relations
+  comment     Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@index([commentId])
+  @@index([userId])
 }
 
 // ==================== Wallet ====================
