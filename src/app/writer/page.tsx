@@ -13,14 +13,14 @@ import {
   Coins,
   DollarSign,
   FileText,
-  CheckCircle,
-  XCircle,
   ChevronLeft,
   BarChart3,
   Wallet,
   Upload,
   X,
   Loader2,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -88,6 +88,18 @@ interface Withdrawal {
   usdValue: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID';
   createdAt: string;
+}
+
+// Loading Skeleton
+function LoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center" dir="rtl">
+      <div className="text-center">
+        <Loader2 className="w-12 h-12 animate-spin text-violet-600 mx-auto mb-4" />
+        <p className="text-muted-foreground">جاري تحميل لوحة الكاتب...</p>
+      </div>
+    </div>
+  );
 }
 
 // Tiptap Editor Component
@@ -170,7 +182,7 @@ function TiptapEditor({ content, onChange }: { content: string; onChange: (conte
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
           className={editor.isActive('blockquote') ? 'bg-slate-200' : ''}
         >
-          " اقتباس
+          &quot; اقتباس
         </Button>
       </div>
       {/* Editor */}
@@ -181,53 +193,68 @@ function TiptapEditor({ content, onChange }: { content: string; onChange: (conte
 
 export default function WriterDashboard() {
   const router = useRouter();
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string; role: string; name?: string } | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [newArticleOpen, setNewArticleOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<WriterStats | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
-  
+
   // New article form
   const [articleTitle, setArticleTitle] = useState('');
   const [articleCategory, setArticleCategory] = useState('');
   const [articleContent, setArticleContent] = useState('');
   const [articleCoverImage, setArticleCoverImage] = useState('');
-  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
 
-  // Check auth
+  // Check auth on mount
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    
-    if (!userData || !token) {
-      router.push('/auth/login');
-      return;
-    }
+    const checkAuth = () => {
+      try {
+        const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
-    try {
-      const parsedUser = JSON.parse(userData);
-      if (parsedUser.role !== 'WRITER' && parsedUser.role !== 'ADMIN') {
-        router.push('/');
-        return;
+        if (!userData || !token) {
+          router.push('/auth/login');
+          return;
+        }
+
+        const parsedUser = JSON.parse(userData);
+        if (parsedUser?.role !== 'WRITER' && parsedUser?.role !== 'ADMIN') {
+          router.push('/');
+          return;
+        }
+
+        setUser(parsedUser);
+      } catch (err) {
+        console.error('Auth check error:', err);
+        router.push('/auth/login');
+      } finally {
+        setIsAuthChecking(false);
       }
-      setUser(parsedUser);
-    } catch {
-      router.push('/auth/login');
-    }
+    };
+
+    checkAuth();
   }, [router]);
 
   // Fetch data
   const fetchData = useCallback(async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
-    const token = localStorage.getItem('token');
-    
+    setError(null);
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      router.push('/auth/login');
+      return;
+    }
+
     try {
       // Fetch stats
       const statsRes = await fetch('/api/writer/stats', {
@@ -235,7 +262,9 @@ export default function WriterDashboard() {
       });
       if (statsRes.ok) {
         const statsData = await statsRes.json();
-        if (statsData.success) setStats(statsData.data);
+        if (statsData?.success && statsData?.data) {
+          setStats(statsData.data);
+        }
       }
 
       // Fetch articles
@@ -244,7 +273,9 @@ export default function WriterDashboard() {
       });
       if (articlesRes.ok) {
         const articlesData = await articlesRes.json();
-        if (articlesData.success) setArticles(articlesData.data);
+        if (articlesData?.success && Array.isArray(articlesData?.data)) {
+          setArticles(articlesData.data);
+        }
       }
 
       // Fetch withdrawals
@@ -253,24 +284,28 @@ export default function WriterDashboard() {
       });
       if (withdrawalsRes.ok) {
         const withdrawalsData = await withdrawalsRes.json();
-        if (withdrawalsData.success) setWithdrawals(withdrawalsData.data);
+        if (withdrawalsData?.success && Array.isArray(withdrawalsData?.data)) {
+          setWithdrawals(withdrawalsData.data);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);
+      setError('حدث خطأ أثناء تحميل البيانات');
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, router]);
 
   useEffect(() => {
-    if (user) fetchData();
-  }, [user, fetchData]);
+    if (user && !isAuthChecking) {
+      fetchData();
+    }
+  }, [user, isAuthChecking, fetchData]);
 
   // Handle cover image upload
   const handleCoverImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setCoverImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setArticleCoverImage(reader.result as string);
@@ -282,13 +317,18 @@ export default function WriterDashboard() {
   // Submit article
   const handleSubmitArticle = async (publish: boolean) => {
     if (!articleTitle.trim() || !articleContent.trim()) {
-      setError('العنوان والمحتوى مطلوبان');
+      setFormError('العنوان والمحتوى مطلوبان');
       return;
     }
 
     setIsSubmitting(true);
-    setError('');
-    const token = localStorage.getItem('token');
+    setFormError('');
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      router.push('/auth/login');
+      return;
+    }
 
     try {
       const res = await fetch('/api/articles', {
@@ -307,24 +347,24 @@ export default function WriterDashboard() {
       });
 
       const data = await res.json();
-      
-      if (data.success) {
-        setSuccess(publish ? 'تم إرسال المقال للمراجعة' : 'تم حفظ المقال كمسودة');
+
+      if (data?.success) {
+        setFormSuccess(publish ? 'تم إرسال المقال للمراجعة' : 'تم حفظ المقال كمسودة');
         setArticleTitle('');
         setArticleContent('');
         setArticleCategory('');
         setArticleCoverImage('');
-        setCoverImageFile(null);
         fetchData();
         setTimeout(() => {
           setNewArticleOpen(false);
-          setSuccess('');
+          setFormSuccess('');
         }, 2000);
       } else {
-        setError(data.message || 'حدث خطأ');
+        setFormError(data?.message || 'حدث خطأ');
       }
     } catch (err) {
-      setError('حدث خطأ أثناء حفظ المقال');
+      console.error('Submit article error:', err);
+      setFormError('حدث خطأ أثناء حفظ المقال');
     } finally {
       setIsSubmitting(false);
     }
@@ -333,8 +373,10 @@ export default function WriterDashboard() {
   // Delete article
   const handleDeleteArticle = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا المقال؟')) return;
-    
-    const token = localStorage.getItem('token');
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
     try {
       const res = await fetch(`/api/articles/${id}`, {
         method: 'DELETE',
@@ -346,14 +388,7 @@ export default function WriterDashboard() {
     }
   };
 
-  if (!user || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
-      </div>
-    );
-  }
-
+  // Status badge helper
   const statusBadge = (status: string) => {
     const config: Record<string, { label: string; class: string }> = {
       PUBLISHED: { label: 'منشور', class: 'bg-green-100 text-green-700' },
@@ -366,6 +401,16 @@ export default function WriterDashboard() {
     const { label, class: className } = config[status] || { label: status, class: '' };
     return <Badge className={className}>{label}</Badge>;
   };
+
+  // Show loading during auth check
+  if (isAuthChecking) {
+    return <LoadingSkeleton />;
+  }
+
+  // Don't render if not authenticated
+  if (!user) {
+    return <LoadingSkeleton />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50" dir="rtl">
@@ -390,9 +435,13 @@ export default function WriterDashboard() {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-full">
                 <Coins className="w-4 h-4 text-amber-500" />
                 <span className="text-sm font-medium text-amber-700">
-                  {(stats?.diamondsBalance || 0).toLocaleString()} ألماس
+                  {(stats?.diamondsBalance ?? 0).toLocaleString()} ألماس
                 </span>
               </div>
+              <Button variant="outline" size="sm" onClick={() => fetchData()} disabled={isLoading}>
+                <RefreshCw className={`w-4 h-4 ml-2 ${isLoading ? 'animate-spin' : ''}`} />
+                تحديث
+              </Button>
               <Button variant="ghost" asChild>
                 <Link href="/" className="gap-2">
                   <ChevronLeft className="w-4 h-4" />
@@ -405,6 +454,14 @@ export default function WriterDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Error Alert */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6">
             <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
@@ -417,63 +474,81 @@ export default function WriterDashboard() {
           <TabsContent value="overview">
             <div className="space-y-6">
               {/* Stats */}
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">المقالات المنشورة</p>
-                        <p className="text-2xl font-bold">{stats?.publishedArticles || 0}</p>
+              {isLoading ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[...Array(4)].map((_, i) => (
+                    <Card key={i}>
+                      <CardContent className="p-6 animate-pulse">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-2">
+                            <div className="h-4 w-24 bg-slate-200 rounded" />
+                            <div className="h-8 w-16 bg-slate-200 rounded" />
+                          </div>
+                          <div className="w-12 h-12 bg-slate-200 rounded-xl" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">المقالات المنشورة</p>
+                          <p className="text-2xl font-bold">{stats?.publishedArticles ?? 0}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-violet-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-violet-100 rounded-xl flex items-center justify-center">
-                        <FileText className="w-6 h-6 text-violet-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">المشاهدات</p>
-                        <p className="text-2xl font-bold">{(stats?.totalViews || 0).toLocaleString()}</p>
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">المشاهدات</p>
+                          <p className="text-2xl font-bold">{(stats?.totalViews ?? 0).toLocaleString()}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                          <Eye className="w-6 h-6 text-indigo-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                        <Eye className="w-6 h-6 text-indigo-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">الهدايا المستلمة</p>
-                        <p className="text-2xl font-bold">{stats?.totalGifts || 0}</p>
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">الهدايا المستلمة</p>
+                          <p className="text-2xl font-bold">{stats?.totalGifts ?? 0}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                          <Gift className="w-6 h-6 text-amber-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                        <Gift className="w-6 h-6 text-amber-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">الأرباح</p>
-                        <p className="text-2xl font-bold">${((stats?.totalEarned || 0) / 100).toFixed(2)}</p>
+                  <Card>
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">الأرباح</p>
+                          <p className="text-2xl font-bold">${((stats?.totalEarned ?? 0) / 100).toFixed(2)}</p>
+                        </div>
+                        <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                          <DollarSign className="w-6 h-6 text-green-600" />
+                        </div>
                       </div>
-                      <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                        <DollarSign className="w-6 h-6 text-green-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               {/* Quick Actions */}
               <Card>
@@ -482,7 +557,7 @@ export default function WriterDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid md:grid-cols-3 gap-4">
-                    <Button 
+                    <Button
                       onClick={() => setNewArticleOpen(true)}
                       className="h-20 flex-col gap-2 bg-gradient-to-r from-violet-600 to-indigo-600"
                     >
@@ -513,46 +588,52 @@ export default function WriterDashboard() {
                   <CardTitle>أحدث المقالات</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {articles.length === 0 ? (
+                  {isLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+                    </div>
+                  ) : articles.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       لم تكتب أي مقالات بعد
                     </div>
                   ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>العنوان</TableHead>
-                          <TableHead>الحالة</TableHead>
-                          <TableHead>المشاهدات</TableHead>
-                          <TableHead>الهدايا</TableHead>
-                          <TableHead>الإجراءات</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {articles.slice(0, 5).map((article) => (
-                          <TableRow key={article.id}>
-                            <TableCell className="font-medium">{article.title}</TableCell>
-                            <TableCell>{statusBadge(article.status)}</TableCell>
-                            <TableCell>{article.viewsCount.toLocaleString()}</TableCell>
-                            <TableCell>{article.gifts?.length || 0}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Button size="sm" variant="ghost" asChild>
-                                  <Link href={`/article/${article.id}`}>
-                                    <Eye className="w-4 h-4" />
-                                  </Link>
-                                </Button>
-                                <Button size="sm" variant="ghost" asChild>
-                                  <Link href={`/writer/edit/${article.id}`}>
-                                    <Edit className="w-4 h-4" />
-                                  </Link>
-                                </Button>
-                              </div>
-                            </TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>العنوان</TableHead>
+                            <TableHead>الحالة</TableHead>
+                            <TableHead>المشاهدات</TableHead>
+                            <TableHead>الهدايا</TableHead>
+                            <TableHead>الإجراءات</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {articles.slice(0, 5).map((article) => (
+                            <TableRow key={article?.id || Math.random()}>
+                              <TableCell className="font-medium">{article?.title || 'بدون عنوان'}</TableCell>
+                              <TableCell>{statusBadge(article?.status || 'DRAFT')}</TableCell>
+                              <TableCell>{(article?.viewsCount ?? 0).toLocaleString()}</TableCell>
+                              <TableCell>{article?.gifts?.length ?? 0}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Button size="sm" variant="ghost" asChild>
+                                    <Link href={`/article/${article?.id}`}>
+                                      <Eye className="w-4 h-4" />
+                                    </Link>
+                                  </Button>
+                                  <Button size="sm" variant="ghost" asChild>
+                                    <Link href={`/writer/edit/${article?.id}`}>
+                                      <Edit className="w-4 h-4" />
+                                    </Link>
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -565,63 +646,76 @@ export default function WriterDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>جميع المقالات</CardTitle>
-                  <Button onClick={() => setNewArticleOpen(true)} className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600">
+                  <Button
+                    onClick={() => setNewArticleOpen(true)}
+                    className="gap-2 bg-gradient-to-r from-violet-600 to-indigo-600"
+                  >
                     <Plus className="w-4 h-4" />
                     مقال جديد
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                {articles.length === 0 ? (
+                {isLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin text-violet-600" />
+                  </div>
+                ) : articles.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    لم تكتب أي مقالات بعد. اضغط على "مقال جديد" للبدء.
+                    لم تكتب أي مقالات بعد. اضغط على &quot;مقال جديد&quot; للبدء.
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>العنوان</TableHead>
-                        <TableHead>الحالة</TableHead>
-                        <TableHead>المشاهدات</TableHead>
-                        <TableHead>الهدايا</TableHead>
-                        <TableHead>التاريخ</TableHead>
-                        <TableHead>الإجراءات</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {articles.map((article) => (
-                        <TableRow key={article.id}>
-                          <TableCell className="font-medium">{article.title}</TableCell>
-                          <TableCell>{statusBadge(article.status)}</TableCell>
-                          <TableCell>{article.viewsCount.toLocaleString()}</TableCell>
-                          <TableCell>{article.gifts?.length || 0}</TableCell>
-                          <TableCell>{new Date(article.createdAt).toLocaleDateString('ar-SA')}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button size="sm" variant="ghost" asChild>
-                                <Link href={`/article/${article.id}`}>
-                                  <Eye className="w-4 h-4" />
-                                </Link>
-                              </Button>
-                              <Button size="sm" variant="ghost" asChild>
-                                <Link href={`/writer/edit/${article.id}`}>
-                                  <Edit className="w-4 h-4" />
-                                </Link>
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="text-red-600"
-                                onClick={() => handleDeleteArticle(article.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>العنوان</TableHead>
+                          <TableHead>الحالة</TableHead>
+                          <TableHead>المشاهدات</TableHead>
+                          <TableHead>الهدايا</TableHead>
+                          <TableHead>التاريخ</TableHead>
+                          <TableHead>الإجراءات</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {articles.map((article) => (
+                          <TableRow key={article?.id || Math.random()}>
+                            <TableCell className="font-medium">{article?.title || 'بدون عنوان'}</TableCell>
+                            <TableCell>{statusBadge(article?.status || 'DRAFT')}</TableCell>
+                            <TableCell>{(article?.viewsCount ?? 0).toLocaleString()}</TableCell>
+                            <TableCell>{article?.gifts?.length ?? 0}</TableCell>
+                            <TableCell>
+                              {article?.createdAt
+                                ? new Date(article.createdAt).toLocaleDateString('ar-SA')
+                                : '-'}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link href={`/article/${article?.id}`}>
+                                    <Eye className="w-4 h-4" />
+                                  </Link>
+                                </Button>
+                                <Button size="sm" variant="ghost" asChild>
+                                  <Link href={`/writer/edit/${article?.id}`}>
+                                    <Edit className="w-4 h-4" />
+                                  </Link>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-600"
+                                  onClick={() => handleDeleteArticle(article?.id)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -637,15 +731,19 @@ export default function WriterDashboard() {
                 <CardContent className="space-y-4">
                   <div className="flex items-center justify-between py-3 border-b">
                     <span className="text-muted-foreground">إجمالي الأرباح</span>
-                    <span className="font-bold text-lg">${((stats?.totalEarned || 0) / 100).toFixed(2)}</span>
+                    <span className="font-bold text-lg">
+                      ${((stats?.totalEarned ?? 0) / 100).toFixed(2)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between py-3 border-b">
                     <span className="text-muted-foreground">تم سحبه</span>
-                    <span className="font-bold">${((stats?.totalWithdrawn || 0) / 100).toFixed(2)}</span>
+                    <span className="font-bold">${((stats?.totalWithdrawn ?? 0) / 100).toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
                     <span className="text-muted-foreground">الرصيد القابل للسحب</span>
-                    <span className="font-bold text-green-600">${((stats?.diamondsBalance || 0) / 100).toFixed(2)}</span>
+                    <span className="font-bold text-green-600">
+                      ${((stats?.diamondsBalance ?? 0) / 100).toFixed(2)}
+                    </span>
                   </div>
                 </CardContent>
               </Card>
@@ -657,7 +755,7 @@ export default function WriterDashboard() {
                 <CardContent>
                   <div className="text-center py-8 text-muted-foreground">
                     <Gift className="w-12 h-12 mx-auto mb-4 text-amber-500" />
-                    <p>تم استلام {stats?.totalGifts || 0} هدية</p>
+                    <p>تم استلام {stats?.totalGifts ?? 0} هدية</p>
                   </div>
                 </CardContent>
               </Card>
@@ -674,15 +772,18 @@ export default function WriterDashboard() {
                 <CardContent>
                   <div className="text-center py-8">
                     <div className="text-5xl font-bold text-amber-600 mb-2">
-                      {(stats?.diamondsBalance || 0).toLocaleString()}
+                      {(stats?.diamondsBalance ?? 0).toLocaleString()}
                     </div>
                     <div className="text-muted-foreground">ألماس</div>
                     <div className="text-2xl font-bold mt-4">
-                      ${((stats?.diamondsBalance || 0) / 100).toFixed(2)}
+                      ${((stats?.diamondsBalance ?? 0) / 100).toFixed(2)}
                     </div>
                     <div className="text-muted-foreground text-sm">قيمة بالدولار</div>
                   </div>
-                  <Button className="w-full bg-gradient-to-r from-violet-600 to-indigo-600" asChild>
+                  <Button
+                    className="w-full bg-gradient-to-r from-violet-600 to-indigo-600"
+                    asChild
+                  >
                     <Link href="/wallet/withdraw">طلب سحب</Link>
                   </Button>
                 </CardContent>
@@ -700,14 +801,17 @@ export default function WriterDashboard() {
                   ) : (
                     <div className="space-y-3">
                       {withdrawals.map((w) => (
-                        <div key={w.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                        <div
+                          key={w?.id || Math.random()}
+                          className="flex items-center justify-between py-3 border-b last:border-0"
+                        >
                           <div>
-                            <div className="font-medium">${w.usdValue.toFixed(2)}</div>
+                            <div className="font-medium">${(w?.usdValue ?? 0).toFixed(2)}</div>
                             <div className="text-sm text-muted-foreground">
-                              {new Date(w.createdAt).toLocaleDateString('ar-SA')}
+                              {w?.createdAt ? new Date(w.createdAt).toLocaleDateString('ar-SA') : '-'}
                             </div>
                           </div>
-                          {statusBadge(w.status)}
+                          {statusBadge(w?.status || 'PENDING')}
                         </div>
                       ))}
                     </div>
@@ -726,29 +830,29 @@ export default function WriterDashboard() {
             <DialogTitle>إنشاء مقال جديد</DialogTitle>
             <DialogDescription>اكتب مقالك وشاركه مع القراء</DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 mt-4">
-            {error && (
+            {formError && (
               <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>{formError}</AlertDescription>
               </Alert>
             )}
-            {success && (
+            {formSuccess && (
               <Alert className="bg-green-50 border-green-200">
-                <AlertDescription className="text-green-700">{success}</AlertDescription>
+                <AlertDescription className="text-green-700">{formSuccess}</AlertDescription>
               </Alert>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="title">العنوان *</Label>
-              <Input 
-                id="title" 
-                placeholder="عنوان المقال" 
+              <Input
+                id="title"
+                placeholder="عنوان المقال"
                 value={articleTitle}
                 onChange={(e) => setArticleTitle(e.target.value)}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="category">التصنيف</Label>
               <Select value={articleCategory} onValueChange={setArticleCategory}>
@@ -772,9 +876,10 @@ export default function WriterDashboard() {
               <div className="border-2 border-dashed rounded-lg p-4">
                 {articleCoverImage ? (
                   <div className="relative">
-                    <img 
-                      src={articleCoverImage} 
-                      alt="Cover preview" 
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={articleCoverImage}
+                      alt="Cover preview"
                       className="w-full h-48 object-cover rounded-lg"
                     />
                     <Button
@@ -782,10 +887,7 @@ export default function WriterDashboard() {
                       variant="destructive"
                       size="sm"
                       className="absolute top-2 left-2"
-                      onClick={() => {
-                        setArticleCoverImage('');
-                        setCoverImageFile(null);
-                      }}
+                      onClick={() => setArticleCoverImage('')}
                     >
                       <X className="w-4 h-4" />
                     </Button>
@@ -804,30 +906,27 @@ export default function WriterDashboard() {
                 )}
               </div>
             </div>
-            
+
             <div className="space-y-2">
               <Label>المحتوى *</Label>
-              <TiptapEditor 
-                content={articleContent} 
-                onChange={setArticleContent} 
-              />
+              <TiptapEditor content={articleContent} onChange={setArticleContent} />
             </div>
-            
+
             <div className="flex justify-end gap-2 pt-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setNewArticleOpen(false);
                   setArticleTitle('');
                   setArticleContent('');
                   setArticleCategory('');
                   setArticleCoverImage('');
-                  setError('');
+                  setFormError('');
                 }}
               >
                 إلغاء
               </Button>
-              <Button 
+              <Button
                 variant="secondary"
                 onClick={() => handleSubmitArticle(false)}
                 disabled={isSubmitting}
@@ -835,7 +934,7 @@ export default function WriterDashboard() {
                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : null}
                 حفظ كمسودة
               </Button>
-              <Button 
+              <Button
                 className="bg-gradient-to-r from-violet-600 to-indigo-600"
                 onClick={() => handleSubmitArticle(true)}
                 disabled={isSubmitting}
