@@ -9,7 +9,6 @@ datasource db {
   provider          = "postgresql"
   url               = env("DATABASE_URL")
   directUrl         = env("DATABASE_URL_UNPOOLED")
-  relationMode      = "prisma"
 }
 
 // ==================== Enums ====================
@@ -172,7 +171,7 @@ model User {
   paymentLogs     PaymentLog[]
   
   // === Referral Relations ===
-  referrer        User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrer        User?    @relation("Referrals", fields: [referredById], references: [id], onDelete: NoAction, onUpdate: NoAction)
   referrals       User[]   @relation("Referrals")
   referralRewards ReferralReward[] @relation("ReferrerRewards")
   earnedRewards   ReferralReward[] @relation("EarnedRewards")
@@ -319,7 +318,7 @@ model SentGift {
   // Relations
   gift        Gift     @relation(fields: [giftId], references: [id])
   sender      User     @relation("SentGiftsSender", fields: [senderId], references: [id])
-  receiver    User     @relation("SentGiftsReceiver", fields: [receiverId], references: [id])
+  receiver    User     @relation("SentGiftsReceiver", fields: [receiverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   article     Article? @relation(fields: [articleId], references: [id])
 
   @@index([senderId])
@@ -397,7 +396,7 @@ model Report {
 
   // Relations
   reporter          User      @relation("ReportsMade", fields: [reporterId], references: [id])
-  reportedUser      User?     @relation("ReportsReceived", fields: [reportedUserId], references: [id])
+  reportedUser      User?     @relation("ReportsReceived", fields: [reportedUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   reportedArticle   Article?  @relation(fields: [reportedArticleId], references: [id])
 
   @@index([reporterId])
@@ -600,7 +599,7 @@ model ReferralReward {
 
   // Relations
   referrer        User     @relation("ReferrerRewards", fields: [referrerId], references: [id])
-  referredUser    User     @relation("EarnedRewards", fields: [referredUserId], references: [id])
+  referredUser    User     @relation("EarnedRewards", fields: [referredUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transaction     Transaction?
 
   @@index([referrerId])
@@ -670,8 +669,8 @@ model PrivateMessage {
   // Relations
   conversation    Conversation @relation(fields: [conversationId], references: [id])
   sender          User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiver        User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  replyTo         PrivateMessage? @relation("MessageReplies", fields: [replyToId], references: [id])
+  receiver        User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replyTo         PrivateMessage? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies         PrivateMessage[] @relation("MessageReplies")
 
   @@index([conversationId])
