@@ -1,9 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { jwtVerify, SignJWT } from 'jose';
+import { jwtVerify } from 'jose';
 
 /**
  * Middleware for authentication and authorization
  * Uses jose library for JWT verification (Edge Runtime compatible)
+ *
+ * NOTE: This middleware does NOT perform locale-based URL prefixing.
+ * The i18n system uses cookie/header-based locale detection instead of
+ * URL segments (e.g., /en/profile). Pages live directly in src/app/.
  */
 
 interface JWTPayload {
@@ -15,46 +19,60 @@ interface JWTPayload {
 }
 
 /**
- * Get JWT secret key as Uint8Array for jose library
+ * Get JWT secret key as Uint8Array for jose library.
+ * Returns null if JWT_SECRET is not configured, allowing
+ * the middleware to continue without crashing.
  */
-function getSecretKey(): Uint8Array {
+function getSecretKey(): Uint8Array | null {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    throw new Error('JWT_SECRET environment variable is not defined');
+    return null;
   }
   return new TextEncoder().encode(secret);
 }
 
 /**
- * Verify JWT token using jose library
+ * Verify JWT token using jose library.
+ * Returns null if the token is invalid or JWT_SECRET is not configured.
  */
 async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const secretKey = getSecretKey();
+    if (!secretKey) {
+      return null;
+    }
     const { payload } = await jwtVerify(token, secretKey, {
       algorithms: ['HS256'],
     });
     return payload as JWTPayload;
-  } catch (error) {
-    // Token is invalid, expired, or malformed
-    console.error('JWT verification failed:', error instanceof Error ? error.message : 'Unknown error');
+  } catch {
     return null;
   }
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
+
+  // Skip middleware for static assets and API routes
+  // (also covered by matcher, but added as a safety net)
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/favicon.ico')
+  ) {
+    return NextResponse.next();
+  }
+
   // Get token from cookies or authorization header
   const tokenFromCookie = request.cookies.get('token')?.value;
   const tokenFromHeader = request.headers.get('authorization')?.replace('Bearer ', '');
   const token = tokenFromCookie || tokenFromHeader;
-  
+
   let user: JWTPayload | null = null;
-  
+
   if (token) {
     user = await verifyToken(token);
-    
+
     // If token is invalid and exists in cookie, clear it
     if (!user && tokenFromCookie) {
       const response = NextResponse.next();
@@ -66,14 +84,16 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes that require authentication
   const protectedPaths = ['/admin', '/wallet', '/settings', '/messages', '/profile', '/writer'];
-  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
+  const isProtectedPath = protectedPaths.some((path) =>
+    pathname === path || pathname.startsWith(path + '/')
+  );
 
   // If trying to access protected route without valid authentication
   if (isProtectedPath && !user) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth/login';
     url.searchParams.set('redirect', pathname);
-    
+
     const response = NextResponse.redirect(url);
     // Clear any invalid cookies
     response.cookies.delete('token');
@@ -82,7 +102,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Admin-only routes - require ADMIN role
-  if (pathname.startsWith('/admin') && user) {
+  if ((pathname === '/admin' || pathname.startsWith('/admin/')) && user) {
     if (user.role !== 'ADMIN') {
       const url = request.nextUrl.clone();
       url.pathname = '/';
@@ -91,7 +111,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Writer-only routes - require WRITER or ADMIN role
-  if (pathname.startsWith('/writer') && user) {
+  if ((pathname === '/writer' || pathname.startsWith('/writer/')) && user) {
     if (!['WRITER', 'ADMIN'].includes(user.role)) {
       const url = request.nextUrl.clone();
       url.pathname = '/';
