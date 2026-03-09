@@ -45,7 +45,8 @@ async function verifyToken(token: string): Promise<JWTPayload | null> {
       algorithms: ['HS256'],
     });
     return payload as JWTPayload;
-  } catch {
+  } catch (error) {
+    console.error('JWT verification failed:', error instanceof Error ? error.message : 'Unknown error');
     return null;
   }
 }
