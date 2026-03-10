@@ -1,12 +1,13 @@
-// This is your Prisma schema file,
+// This is your Prisma schema file for PostgreSQL (Production)
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -41,6 +42,8 @@ model User {
   referrals     Referral[] @relation("Referrer")
   referredUser  Referral?  @relation("ReferredUser")
 
+  @@index([email])
+  @@index([referralCode])
   @@map("users")
 }
 
@@ -81,6 +84,8 @@ model Transaction {
   metadata    String?          // JSON string for additional data
   createdAt   DateTime         @default(now())
 
+  @@index([userId])
+  @@index([createdAt])
   @@map("transactions")
 }
 
@@ -155,6 +160,9 @@ model GiftTransaction {
   quscoinValue Float    // 80% for receiver
   createdAt    DateTime @default(now())
 
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([createdAt])
   @@map("gift_transactions")
 }
 
@@ -183,6 +191,10 @@ model Article {
 
   comments     Comment[]
 
+  @@index([authorId])
+  @@index([status])
+  @@index([category])
+  @@index([publishedAt])
   @@map("articles")
 }
 
@@ -206,6 +218,8 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([articleId])
+  @@index([authorId])
   @@map("comments")
 }
 
@@ -226,6 +240,8 @@ model WithdrawalRequest {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
+  @@index([userId])
+  @@index([status])
   @@map("withdrawal_requests")
 }
 
@@ -259,6 +275,7 @@ model Referral {
   commission   Float    @default(0)
   createdAt    DateTime @default(now())
 
+  @@index([referrerId])
   @@map("referrals")
 }
 
@@ -275,6 +292,8 @@ model Notification {
   isRead    Boolean            @default(false)
   createdAt DateTime           @default(now())
 
+  @@index([userId])
+  @@index([isRead])
   @@map("notifications")
 }
 

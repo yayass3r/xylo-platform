@@ -1,0 +1,58 @@
+{
+  "$schema": "https://northflank.com/schema/v1/deployment.json",
+  "name": "xylo-platform",
+  "description": "زايلو - منصة دعم صُنّاع المحتوى العربي",
+  "version": "1.0.0",
+  
+  "build": {
+    "type": "dockerfile",
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  
+  "deployment": {
+    "replicas": 1,
+    "resources": {
+      "cpu": "0.5",
+      "memory": "512Mi"
+    },
+    "healthCheck": {
+      "path": "/",
+      "port": 3000,
+      "initialDelaySeconds": 30,
+      "periodSeconds": 10
+    }
+  },
+  
+  "networking": {
+    "public": true,
+    "port": 3000,
+    "protocol": "HTTP"
+  },
+  
+  "environment": {
+    "NODE_ENV": "production",
+    "NEXT_TELEMETRY_DISABLED": "1"
+  },
+  
+  "secrets": [
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  ],
+  
+  "addons": {
+    "postgres": {
+      "type": "postgres",
+      "version": "15",
+      "plan": "standard-small"
+    }
+  },
+  
+  "scaling": {
+    "minReplicas": 1,
+    "maxReplicas": 3,
+    "targetCPUUtilization": 70
+  }
+}
