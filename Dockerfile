@@ -63,6 +63,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
 
@@ -81,4 +82,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/ || exit 1
 
 # Start command - push schema, seed database, then start server
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx prisma db seed && node server.js"]
+CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && node ./node_modules/prisma/build/index.js db seed && node server.js"]
