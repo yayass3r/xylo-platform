@@ -79,5 +79,6 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/ || exit 1
 
-# Start command - push schema, seed database, then start server
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --accept-data-loss && node ./node_modules/prisma/build/index.js db seed && node server.js"]
+# Start command - skip db push for now, just start the server
+# Database schema should be pushed manually or via migration
+CMD ["sh", "-c", "node server.js"]
