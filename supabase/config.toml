@@ -1,0 +1,4 @@
+# A string used to generate a JWT for authenticating with Supabase
+# Generate this via: supabase secrets generate-jwt --project-ref bzpgmovnjiqihvzkctlr
+[supabase]
+project_ref = "bzpgmovnjiqihvzkctlr"

@@ -1,0 +1,467 @@
+// This is your Prisma schema file for PostgreSQL (Supabase)
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== USERS & AUTH ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String?
+  displayName   String?
+  avatar        String?
+  bio           String?   @db.Text
+  website       String?
+  location      String?
+  socialLinks   Json?
+  role          UserRole  @default(USER)
+  isVerified    Boolean   @default(false)
+  verifiedAt    DateTime?
+  isActive      Boolean   @default(true)
+  referralCode  String    @unique
+  referredBy    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  wallet          Wallet?
+  articles        Article[]
+  comments        Comment[]
+  giftSent        GiftTransaction[]  @relation("SentGifts")
+  giftReceived    GiftTransaction[]  @relation("ReceivedGifts")
+  transactions    Transaction[]
+  withdrawals     WithdrawalRequest[]
+  notifications   Notification[]
+  referrals       Referral[]         @relation("Referrer")
+  referredUser    Referral?          @relation("ReferredUser")
+  
+  // New relations
+  followers       Follow[]           @relation("Followed")
+  following       Follow[]           @relation("Following")
+  articleLikes    ArticleLike[]
+  bookmarks       Bookmark[]
+  reports         Report[]           @relation("Reporter")
+  reportedContent Report[]           @relation("Reported")
+
+  @@index([email])
+  @@index([referralCode])
+  @@map("users")
+}
+
+enum UserRole {
+  USER
+  CREATOR
+  MODERATOR
+  ADMIN
+}
+
+// ==================== FOLLOWS ====================
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  
+  follower    User     @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Followed", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+// ==================== WALLET ====================
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  malcoinBalance  Float    @default(0)
+  quscoinBalance  Float    @default(0)
+  totalEarned     Float    @default(0)
+  totalWithdrawn  Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+// ==================== TRANSACTIONS ====================
+
+model Transaction {
+  id          String            @id @default(cuid())
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        TransactionType
+  amount      Float
+  currency    CurrencyType
+  description String?
+  status      TransactionStatus @default(COMPLETED)
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  RECHARGE
+  GIFT_SENT
+  GIFT_RECEIVED
+  WITHDRAWAL
+  REFERRAL_BONUS
+  COMMISSION
+}
+
+enum CurrencyType {
+  MALCOIN
+  QUSCOIN
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ==================== RECHARGE PACKAGES ====================
+
+model RechargePackage {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+  malcoinAmount   Float
+  priceUSD        Float
+  bonusMalcoin    Float    @default(0)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("recharge_packages")
+}
+
+// ==================== GIFTS ====================
+
+model Gift {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  nameAr      String
+  description String?
+  icon        String
+  cost        Float
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions GiftTransaction[]
+
+  @@map("gifts")
+}
+
+model GiftTransaction {
+  id           String   @id @default(cuid())
+  giftId       String
+  gift         Gift     @relation(fields: [giftId], references: [id])
+  senderId     String
+  sender       User     @relation("SentGifts", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId   String
+  receiver     User     @relation("ReceivedGifts", fields: [receiverId], references: [id], onDelete: Cascade)
+  articleId    String?
+  message      String?
+  malcoinValue Float
+  quscoinValue Float
+  createdAt    DateTime @default(now())
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([articleId])
+  @@map("gift_transactions")
+}
+
+// ==================== ARTICLES ====================
+
+model Article {
+  id           String        @id @default(cuid())
+  authorId     String
+  author       User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title        String
+  slug         String        @unique
+  content      String        @db.Text
+  excerpt      String?       @db.Text
+  coverImage   String?
+  category     String?
+  tags         String[]
+  status       ArticleStatus @default(DRAFT)
+  views        Int           @default(0)
+  likes        Int           @default(0)
+  giftCount    Int           @default(0)
+  giftValue    Float         @default(0)
+  isFeatured   Boolean       @default(false)
+  isTrending   Boolean       @default(false)
+  readTime     Int           @default(0)
+  publishedAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  comments       Comment[]
+  likesRelation  ArticleLike[]
+  bookmarks      Bookmark[]
+  hashtags       ArticleHashtag[]
+
+  @@index([authorId])
+  @@index([status])
+  @@index([category])
+  @@index([publishedAt])
+  @@index([isFeatured])
+  @@index([isTrending])
+  @@map("articles")
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// ==================== ARTICLE LIKES ====================
+
+model ArticleLike {
+  id        String   @id @default(cuid())
+  articleId String
+  userId    String
+  createdAt DateTime @default(now())
+  
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, userId])
+  @@index([articleId])
+  @@index([userId])
+  @@map("article_likes")
+}
+
+// ==================== BOOKMARKS ====================
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  articleId String
+  userId    String
+  createdAt DateTime @default(now())
+  
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, userId])
+  @@index([userId])
+  @@map("bookmarks")
+}
+
+// ==================== HASHTAGS ====================
+
+model Hashtag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  
+  articles  ArticleHashtag[]
+
+  @@map("hashtags")
+}
+
+model ArticleHashtag {
+  id        String   @id @default(cuid())
+  articleId String
+  hashtagId String
+  
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  hashtag   Hashtag  @relation(fields: [hashtagId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, hashtagId])
+  @@index([hashtagId])
+  @@map("article_hashtags")
+}
+
+// ==================== COMMENTS ====================
+
+model Comment {
+  id        String    @id @default(cuid())
+  articleId String
+  article   Article   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String    @db.Text
+  parentId  String?
+  likes     Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  replies   Comment[]  @relation("CommentReplies")
+  parent    Comment?   @relation("CommentReplies", fields: [parentId], references: [id])
+
+  @@index([articleId])
+  @@index([authorId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+// ==================== WITHDRAWALS ====================
+
+model WithdrawalRequest {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount       Float
+  usdAmount    Float
+  method       WithdrawalMethod
+  accountInfo  String
+  status       WithdrawalStatus @default(PENDING)
+  processedAt  DateTime?
+  processedBy  String?
+  notes        String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@map("withdrawal_requests")
+}
+
+enum WithdrawalMethod {
+  STRIPE
+  PAYPAL
+  MOYASAR
+  STC_PAY
+  PAYONEER
+  SKRILL
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+// ==================== REFERRALS ====================
+
+model Referral {
+  id           String   @id @default(cuid())
+  referrerId   String
+  referrer     User     @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId   String   @unique
+  referred     User     @relation("ReferredUser", fields: [referredId], references: [id], onDelete: Cascade)
+  bonusPaid    Boolean  @default(false)
+  bonusAmount  Float    @default(0)
+  commission   Float    @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([referrerId])
+  @@map("referrals")
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean            @default(false)
+  createdAt DateTime           @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  GIFT_RECEIVED
+  NEW_COMMENT
+  REFERRAL_BONUS
+  WITHDRAWAL_STATUS
+  ARTICLE_LIKED
+  NEW_FOLLOWER
+  ARTICLE_BOOKMARKED
+  MENTION
+  SYSTEM
+}
+
+// ==================== REPORTS ====================
+
+model Report {
+  id          String      @id @default(cuid())
+  reporterId  String
+  reporter    User        @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedId  String
+  reported    User        @relation("Reported", fields: [reportedId], references: [id], onDelete: Cascade)
+  type        ReportType
+  reason      String      @db.Text
+  targetType  ReportTarget
+  targetId    String
+  status      ReportStatus @default(PENDING)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  action      String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([reporterId])
+  @@index([reportedId])
+  @@index([status])
+  @@map("reports")
+}
+
+enum ReportType {
+  SPAM
+  HARASSMENT
+  INAPPROPRIATE_CONTENT
+  COPYRIGHT
+  MISINFORMATION
+  OTHER
+}
+
+enum ReportTarget {
+  ARTICLE
+  COMMENT
+  USER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+// ==================== SITE SETTINGS ====================
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}
