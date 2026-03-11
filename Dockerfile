@@ -64,6 +64,7 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
 
 # Set proper permissions
 RUN chown -R nextjs:nodejs /app
@@ -79,5 +80,5 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/ || exit 1
 
-# Start command - run migrations then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Start command - push schema, seed database, then start server
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx prisma db seed && node server.js"]
