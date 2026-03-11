@@ -29,7 +29,30 @@ import {
   DollarSign,
   ArrowUpDown,
   Menu,
-  PenTool
+  PenTool,
+  Bookmark,
+  Bell,
+  Share2,
+  MoreHorizontal,
+  Flag,
+  ExternalLink,
+  Users,
+  Award,
+  Flame,
+  Hash,
+  ThumbsUp,
+  Reply,
+  Trash2,
+  Edit,
+  MapPin,
+  Globe,
+  Instagram,
+  Twitter,
+  Youtube,
+  Linkedin,
+  Crown,
+  Star,
+  Copy
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -67,10 +90,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 
 // Types
@@ -80,6 +109,7 @@ interface User {
   name?: string
   displayName?: string
   avatar?: string
+  bio?: string
   role: 'USER' | 'CREATOR' | 'MODERATOR' | 'ADMIN'
   isVerified: boolean
   wallet?: {
@@ -87,6 +117,11 @@ interface User {
     quscoinBalance: number
     totalEarned: number
     totalWithdrawn: number
+  }
+  _count?: {
+    followers: number
+    following: number
+    articles: number
   }
 }
 
@@ -98,10 +133,30 @@ interface Article {
   excerpt?: string
   coverImage?: string
   category?: string
+  tags?: string
   views: number
   likes: number
   giftCount: number
   giftValue: number
+  isLiked?: boolean
+  isBookmarked?: boolean
+  createdAt: string
+  author: {
+    id: string
+    name?: string
+    displayName?: string
+    avatar?: string
+    isVerified: boolean
+  }
+  _count?: {
+    comments: number
+  }
+}
+
+interface Comment {
+  id: string
+  content: string
+  likes: number
   createdAt: string
   author: {
     id: string
@@ -130,6 +185,31 @@ interface Transaction {
   currency: 'MALCOIN' | 'QUSCOIN'
   description?: string
   createdAt: string
+}
+
+interface Notification {
+  id: string
+  type: string
+  title: string
+  message: string
+  isRead: boolean
+  createdAt: string
+  data?: string
+}
+
+interface TrendingCreator {
+  id: string
+  name?: string
+  displayName?: string
+  avatar?: string
+  isVerified: boolean
+  stats: {
+    articleCount: number
+    totalViews: number
+    totalLikes: number
+    totalGifts: number
+  }
+  score: number
 }
 
 // API Functions
@@ -162,11 +242,30 @@ function formatNumber(num: number): string {
 // Format date to Arabic
 function formatDate(dateString: string): string {
   const date = new Date(dateString)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  
+  if (minutes < 1) return 'الآن'
+  if (minutes < 60) return `منذ ${minutes} دقيقة`
+  if (hours < 24) return `منذ ${hours} ساعة`
+  if (days < 7) return `منذ ${days} يوم`
+  
   return date.toLocaleDateString('ar-SA', {
     year: 'numeric',
-    month: 'long',
+    month: 'short',
     day: 'numeric',
   })
+}
+
+// Calculate read time
+function calculateReadTime(content: string): number {
+  const wordsPerMinute = 200
+  const words = content.split(/\s+/).length
+  return Math.ceil(words / wordsPerMinute)
 }
 
 // Transaction type labels
@@ -181,16 +280,16 @@ const transactionTypeLabels: Record<string, string> = {
 
 // Article categories
 const categories = [
-  { id: 'technology', name: 'تقنية' },
-  { id: 'business', name: 'أعمال' },
-  { id: 'lifestyle', name: 'أسلوب حياة' },
-  { id: 'education', name: 'تعليم' },
-  { id: 'entertainment', name: 'ترفيه' },
-  { id: 'health', name: 'صحة' },
-  { id: 'sports', name: 'رياضة' },
-  { id: 'travel', name: 'سفر' },
-  { id: 'food', name: 'طعام' },
-  { id: 'other', name: 'أخرى' },
+  { id: 'technology', name: 'تقنية', icon: '💻' },
+  { id: 'business', name: 'أعمال', icon: '💼' },
+  { id: 'lifestyle', name: 'أسلوب حياة', icon: '✨' },
+  { id: 'education', name: 'تعليم', icon: '📚' },
+  { id: 'entertainment', name: 'ترفيه', icon: '🎮' },
+  { id: 'health', name: 'صحة', icon: '🏥' },
+  { id: 'sports', name: 'رياضة', icon: '⚽' },
+  { id: 'travel', name: 'سفر', icon: '✈️' },
+  { id: 'food', name: 'طعام', icon: '🍕' },
+  { id: 'other', name: 'أخرى', icon: '📝' },
 ]
 
 // Withdrawal methods
@@ -207,7 +306,7 @@ export default function XyloPlatform() {
   // State
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeSection, setActiveSection] = useState<'home' | 'articles' | 'wallet' | 'my-articles'>('home')
+  const [activeSection, setActiveSection] = useState<'home' | 'articles' | 'wallet' | 'my-articles' | 'bookmarks' | 'profile' | 'notifications' | 'trending'>('home')
   
   // Auth modals
   const [showLoginModal, setShowLoginModal] = useState(false)
@@ -229,6 +328,12 @@ export default function XyloPlatform() {
   const [showArticleModal, setShowArticleModal] = useState(false)
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null)
   const [articleLoading, setArticleLoading] = useState(false)
+  
+  // Comments
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
   
   // Create article
   const [showCreateArticleModal, setShowCreateArticleModal] = useState(false)
@@ -269,8 +374,30 @@ export default function XyloPlatform() {
   })
   const [withdrawalLoading, setWithdrawalLoading] = useState(false)
   
+  // Notifications
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
+  
+  // Bookmarks
+  const [bookmarks, setBookmarks] = useState<Article[]>([])
+  const [bookmarksLoading, setBookmarksLoading] = useState(false)
+  
+  // Trending
+  const [trendingArticles, setTrendingArticles] = useState<Article[]>([])
+  const [trendingCreators, setTrendingCreators] = useState<TrendingCreator[]>([])
+  
+  // User Profile
+  const [viewingUser, setViewingUser] = useState<User | null>(null)
+  const [userArticles, setUserArticles] = useState<Article[]>([])
+  const [isFollowing, setIsFollowing] = useState(false)
+  
   // Mobile menu
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  
+  // Share modal
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareArticle, setShareArticle] = useState<Article | null>(null)
 
   // Check auth on mount
   const checkAuth = useCallback(async () => {
@@ -326,6 +453,46 @@ export default function XyloPlatform() {
     }
   }, [user])
 
+  // Fetch notifications
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return
+    try {
+      const data = await fetchAPI('/notifications?limit=50')
+      setNotifications(data.notifications)
+      setUnreadCount(data.unreadCount)
+    } catch (error) {
+      console.error('Error fetching notifications:', error)
+    }
+  }, [user])
+
+  // Fetch bookmarks
+  const fetchBookmarks = useCallback(async () => {
+    if (!user) return
+    setBookmarksLoading(true)
+    try {
+      const data = await fetchAPI('/bookmarks')
+      setBookmarks(data.bookmarks)
+    } catch (error) {
+      console.error('Error fetching bookmarks:', error)
+    } finally {
+      setBookmarksLoading(false)
+    }
+  }, [user])
+
+  // Fetch trending
+  const fetchTrending = useCallback(async () => {
+    try {
+      const [articlesData, creatorsData] = await Promise.all([
+        fetchAPI('/trending?type=articles&limit=5'),
+        fetchAPI('/trending?type=creators&limit=5')
+      ])
+      setTrendingArticles(articlesData.trending)
+      setTrendingCreators(creatorsData.trending)
+    } catch (error) {
+      console.error('Error fetching trending:', error)
+    }
+  }, [])
+
   // Effects
   useEffect(() => {
     checkAuth()
@@ -340,10 +507,26 @@ export default function XyloPlatform() {
   }, [fetchGifts])
 
   useEffect(() => {
+    fetchTrending()
+  }, [fetchTrending])
+
+  useEffect(() => {
     if (activeSection === 'wallet' && user) {
       fetchWallet()
     }
   }, [activeSection, user, fetchWallet])
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications()
+    }
+  }, [user, fetchNotifications])
+
+  useEffect(() => {
+    if (activeSection === 'bookmarks' && user) {
+      fetchBookmarks()
+    }
+  }, [activeSection, user, fetchBookmarks])
 
   // Auth handlers
   const handleLogin = async (e: React.FormEvent) => {
@@ -415,6 +598,75 @@ export default function XyloPlatform() {
     }
   }
 
+  // Like handler
+  const handleLike = async (articleId: string) => {
+    if (!user) {
+      setShowLoginModal(true)
+      return
+    }
+    try {
+      const data = await fetchAPI('/likes', {
+        method: 'POST',
+        body: JSON.stringify({ articleId }),
+      })
+      // Update articles state
+      setArticles(prev => prev.map(a => 
+        a.id === articleId 
+          ? { ...a, likes: a.likes + data.likes, isLiked: data.action === 'liked' }
+          : a
+      ))
+      if (selectedArticle?.id === articleId) {
+        setSelectedArticle(prev => prev ? { ...prev, likes: prev.likes + data.likes, isLiked: data.action === 'liked' } : null)
+      }
+      toast.success(data.action === 'liked' ? 'تم الإعجاب!' : 'تم إزالة الإعجاب')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'حدث خطأ')
+    }
+  }
+
+  // Bookmark handler
+  const handleBookmark = async (articleId: string) => {
+    if (!user) {
+      setShowLoginModal(true)
+      return
+    }
+    try {
+      const data = await fetchAPI('/bookmarks', {
+        method: 'POST',
+        body: JSON.stringify({ articleId }),
+      })
+      setArticles(prev => prev.map(a => 
+        a.id === articleId 
+          ? { ...a, isBookmarked: data.action === 'bookmarked' }
+          : a
+      ))
+      if (selectedArticle?.id === articleId) {
+        setSelectedArticle(prev => prev ? { ...prev, isBookmarked: data.action === 'bookmarked' } : null)
+      }
+      toast.success(data.action === 'bookmarked' ? 'تم الحفظ!' : 'تم إزالة الحفظ')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'حدث خطأ')
+    }
+  }
+
+  // Follow handler
+  const handleFollow = async (targetUserId: string) => {
+    if (!user) {
+      setShowLoginModal(true)
+      return
+    }
+    try {
+      const data = await fetchAPI('/follow', {
+        method: 'POST',
+        body: JSON.stringify({ targetUserId }),
+      })
+      setIsFollowing(data.action === 'followed')
+      toast.success(data.action === 'followed' ? 'تمت المتابعة!' : 'تم إلغاء المتابعة')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'حدث خطأ')
+    }
+  }
+
   // Gift handler
   const handleSendGift = async () => {
     if (!selectedGift || !selectedArticle) return
@@ -468,10 +720,74 @@ export default function XyloPlatform() {
     }
   }
 
+  // Comment handlers
+  const fetchComments = async (articleId: string) => {
+    setCommentsLoading(true)
+    try {
+      const data = await fetchAPI(`/comments?articleId=${articleId}`)
+      setComments(data.comments)
+    } catch (error) {
+      console.error('Error fetching comments:', error)
+    } finally {
+      setCommentsLoading(false)
+    }
+  }
+
+  const handleAddComment = async (articleId: string) => {
+    if (!user) {
+      setShowLoginModal(true)
+      return
+    }
+    if (!newComment.trim()) return
+    try {
+      const data = await fetchAPI('/comments', {
+        method: 'POST',
+        body: JSON.stringify({ articleId, content: newComment, parentId: replyingTo }),
+      })
+      setComments(prev => [data.comment, ...prev])
+      setNewComment('')
+      setReplyingTo(null)
+      toast.success('تم إضافة التعليق!')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'حدث خطأ')
+    }
+  }
+
+  // Share handler
+  const handleShare = async (article: Article) => {
+    const url = `${window.location.origin}/article/${article.slug}`
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: article.title,
+          text: article.excerpt,
+          url,
+        })
+      } catch {
+        // User cancelled
+      }
+    } else {
+      await navigator.clipboard.writeText(url)
+      toast.success('تم نسخ الرابط!')
+    }
+  }
+
+  // Mark notifications as read
+  const markNotificationsRead = async () => {
+    try {
+      await fetchAPI('/notifications?markAll=true', { method: 'PUT' })
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setUnreadCount(0)
+    } catch (error) {
+      console.error('Error marking notifications:', error)
+    }
+  }
+
   // Open article detail
-  const openArticleDetail = (article: Article) => {
+  const openArticleDetail = async (article: Article) => {
     setSelectedArticle(article)
     setShowArticleModal(true)
+    await fetchComments(article.id)
   }
 
   // Open gift modal
@@ -481,6 +797,19 @@ export default function XyloPlatform() {
       return
     }
     setShowGiftModal(true)
+  }
+
+  // View user profile
+  const viewUserProfile = async (userId: string) => {
+    try {
+      const data = await fetchAPI(`/users?id=${userId}`)
+      setViewingUser(data.user)
+      setUserArticles(data.user.recentArticles)
+      setIsFollowing(data.user.isFollowing)
+      setActiveSection('profile')
+    } catch (error) {
+      toast.error('حدث خطأ أثناء جلب الملف الشخصي')
+    }
   }
 
   if (loading) {
@@ -523,6 +852,14 @@ export default function XyloPlatform() {
                 الرئيسية
               </Button>
               <Button
+                variant={activeSection === 'trending' ? 'secondary' : 'ghost'}
+                onClick={() => setActiveSection('trending')}
+                className="gap-2"
+              >
+                <Flame className="w-4 h-4" />
+                الرائج
+              </Button>
+              <Button
                 variant={activeSection === 'articles' ? 'secondary' : 'ghost'}
                 onClick={() => setActiveSection('articles')}
                 className="gap-2"
@@ -548,6 +885,14 @@ export default function XyloPlatform() {
                     <PenTool className="w-4 h-4" />
                     مقالاتي
                   </Button>
+                  <Button
+                    variant={activeSection === 'bookmarks' ? 'secondary' : 'ghost'}
+                    onClick={() => setActiveSection('bookmarks')}
+                    className="gap-2"
+                  >
+                    <Bookmark className="w-4 h-4" />
+                    المحفوظات
+                  </Button>
                 </>
               )}
             </nav>
@@ -568,6 +913,56 @@ export default function XyloPlatform() {
                     </Badge>
                   </div>
                   
+                  {/* Notifications */}
+                  <div className="relative">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setShowNotifications(!showNotifications)
+                        if (unreadCount > 0) markNotificationsRead()
+                      }}
+                    >
+                      <Bell className="w-5 h-5" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                          {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                      )}
+                    </Button>
+                    
+                    {showNotifications && (
+                      <Card className="absolute left-0 top-full mt-2 w-80 max-h-96 overflow-hidden shadow-xl">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm">الإشعارات</CardTitle>
+                        </CardHeader>
+                        <ScrollArea className="h-72">
+                          {notifications.length === 0 ? (
+                            <div className="p-4 text-center text-gray-500">
+                              لا توجد إشعارات
+                            </div>
+                          ) : (
+                            <div className="divide-y">
+                              {notifications.slice(0, 10).map((notif) => (
+                                <div
+                                  key={notif.id}
+                                  className={cn(
+                                    "p-3 hover:bg-gray-50 cursor-pointer",
+                                    !notif.isRead && "bg-purple-50"
+                                  )}
+                                >
+                                  <p className="font-medium text-sm">{notif.title}</p>
+                                  <p className="text-xs text-gray-600 mt-1">{notif.message}</p>
+                                  <p className="text-xs text-gray-400 mt-1">{formatDate(notif.createdAt)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </ScrollArea>
+                      </Card>
+                    )}
+                  </div>
+                  
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="gap-2">
@@ -584,6 +979,10 @@ export default function XyloPlatform() {
                     <DropdownMenuContent align="start" className="w-56">
                       <DropdownMenuLabel>حسابي</DropdownMenuLabel>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => viewUserProfile(user.id)}>
+                        <User className="w-4 h-4 ml-2" />
+                        الملف الشخصي
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setActiveSection('wallet')}>
                         <Wallet className="w-4 h-4 ml-2" />
                         المحفظة
@@ -591,6 +990,10 @@ export default function XyloPlatform() {
                       <DropdownMenuItem onClick={() => setActiveSection('my-articles')}>
                         <FileText className="w-4 h-4 ml-2" />
                         مقالاتي
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setActiveSection('bookmarks')}>
+                        <Bookmark className="w-4 h-4 ml-2" />
+                        المحفوظات
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Settings className="w-4 h-4 ml-2" />
@@ -645,6 +1048,14 @@ export default function XyloPlatform() {
                   الرئيسية
                 </Button>
                 <Button
+                  variant={activeSection === 'trending' ? 'secondary' : 'ghost'}
+                  onClick={() => { setActiveSection('trending'); setMobileMenuOpen(false) }}
+                  className="justify-start gap-2"
+                >
+                  <Flame className="w-4 h-4" />
+                  الرائج
+                </Button>
+                <Button
                   variant={activeSection === 'articles' ? 'secondary' : 'ghost'}
                   onClick={() => { setActiveSection('articles'); setMobileMenuOpen(false) }}
                   className="justify-start gap-2"
@@ -669,6 +1080,14 @@ export default function XyloPlatform() {
                     >
                       <PenTool className="w-4 h-4" />
                       مقالاتي
+                    </Button>
+                    <Button
+                      variant={activeSection === 'bookmarks' ? 'secondary' : 'ghost'}
+                      onClick={() => { setActiveSection('bookmarks'); setMobileMenuOpen(false) }}
+                      className="justify-start gap-2"
+                    >
+                      <Bookmark className="w-4 h-4" />
+                      المحفوظات
                     </Button>
                   </>
                 )}
@@ -769,6 +1188,79 @@ export default function XyloPlatform() {
               </Card>
             </section>
 
+            {/* Trending Section */}
+            <section>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <Flame className="w-6 h-6 text-orange-500" />
+                  المحتوى الرائج
+                </h2>
+                <Button variant="ghost" onClick={() => setActiveSection('trending')}>
+                  عرض الكل
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Trending Articles */}
+                <Card className="border-0 shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-lg">المقالات الرائجة</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {trendingArticles.slice(0, 5).map((article, index) => (
+                      <div
+                        key={article.id}
+                        className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+                        onClick={() => openArticleDetail(article)}
+                      >
+                        <span className="text-2xl font-bold text-gray-300">{index + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{article.title}</p>
+                          <p className="text-sm text-gray-500">
+                            {formatNumber(article.views)} مشاهدة • {formatNumber(article.likes)} إعجاب
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+                
+                {/* Trending Creators */}
+                <Card className="border-0 shadow-lg">
+                  <CardHeader>
+                    <CardTitle className="text-lg">أفضل الصناع</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {trendingCreators.slice(0, 5).map((creator, index) => (
+                      <div
+                        key={creator.id}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+                        onClick={() => viewUserProfile(creator.id)}
+                      >
+                        <span className="text-2xl font-bold text-gray-300">{index + 1}</span>
+                        <Avatar className="w-10 h-10">
+                          <AvatarImage src={creator.avatar} />
+                          <AvatarFallback>
+                            {creator.displayName?.[0] || creator.name?.[0] || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium truncate">{creator.displayName || creator.name}</p>
+                            {creator.isVerified && (
+                              <Badge variant="secondary" className="text-xs">موثق</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            {creator.stats.articleCount} مقال • {formatNumber(creator.stats.totalViews)} مشاهدة
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+            </section>
+
             {/* Latest Articles */}
             <section>
               <div className="flex items-center justify-between mb-6">
@@ -782,7 +1274,12 @@ export default function XyloPlatform() {
                   <ArticleCard
                     key={article.id}
                     article={article}
+                    user={user}
                     onClick={() => openArticleDetail(article)}
+                    onLike={() => handleLike(article.id)}
+                    onBookmark={() => handleBookmark(article.id)}
+                    onShare={() => handleShare(article)}
+                    onAuthorClick={() => viewUserProfile(article.author.id)}
                   />
                 ))}
               </div>
@@ -814,6 +1311,109 @@ export default function XyloPlatform() {
           </div>
         )}
 
+        {/* Trending Section */}
+        {activeSection === 'trending' && (
+          <div className="space-y-8">
+            <h2 className="text-2xl font-bold flex items-center gap-2">
+              <Flame className="w-6 h-6 text-orange-500" />
+              المحتوى الرائج هذا الأسبوع
+            </h2>
+            
+            <Tabs defaultValue="articles">
+              <TabsList>
+                <TabsTrigger value="articles">المقالات</TabsTrigger>
+                <TabsTrigger value="creators">الصناع</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="articles" className="mt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {trendingArticles.map((article, index) => (
+                    <Card key={article.id} className="border-0 shadow-lg overflow-hidden">
+                      <div className="flex">
+                        <div className="w-16 bg-gradient-to-b from-purple-500 to-indigo-600 flex items-center justify-center">
+                          <span className="text-3xl font-bold text-white">{index + 1}</span>
+                        </div>
+                        <div className="flex-1 p-4">
+                          <h3 className="font-bold mb-2 cursor-pointer hover:text-purple-600" onClick={() => openArticleDetail(article)}>
+                            {article.title}
+                          </h3>
+                          <div className="flex items-center gap-4 text-sm text-gray-500">
+                            <span className="flex items-center gap-1">
+                              <Eye className="w-4 h-4" />
+                              {formatNumber(article.views)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Heart className="w-4 h-4" />
+                              {formatNumber(article.likes)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Gift className="w-4 h-4" />
+                              {article.giftCount}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="creators" className="mt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {trendingCreators.map((creator, index) => (
+                    <Card key={creator.id} className="border-0 shadow-lg overflow-hidden">
+                      <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-4 text-white">
+                        <div className="flex items-center gap-3">
+                          <div className="relative">
+                            <Avatar className="w-16 h-16 border-2 border-white">
+                              <AvatarImage src={creator.avatar} />
+                              <AvatarFallback className="text-purple-600 text-xl">
+                                {creator.displayName?.[0] || creator.name?.[0] || '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            {index < 3 && (
+                              <div className="absolute -bottom-1 -right-1">
+                                {index === 0 && <Crown className="w-6 h-6 text-yellow-400" />}
+                                {index === 1 && <Star className="w-5 h-5 text-gray-300" />}
+                                {index === 2 && <Star className="w-5 h-5 text-amber-600" />}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-bold text-lg">{creator.displayName || creator.name}</p>
+                            <p className="text-sm text-purple-100">
+                              {creator.stats.articleCount} مقال
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <CardContent className="p-4">
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <p className="text-2xl font-bold text-gray-900">{formatNumber(creator.stats.totalViews)}</p>
+                            <p className="text-xs text-gray-500">مشاهدة</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold text-gray-900">{formatNumber(creator.stats.totalLikes)}</p>
+                            <p className="text-xs text-gray-500">إعجاب</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold text-gray-900">{creator.stats.totalGifts}</p>
+                            <p className="text-xs text-gray-500">هدية</p>
+                          </div>
+                        </div>
+                        <Button className="w-full mt-4" variant="outline" onClick={() => viewUserProfile(creator.id)}>
+                          عرض الملف
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+
         {/* Articles Section */}
         {activeSection === 'articles' && (
           <div className="space-y-6">
@@ -838,7 +1438,7 @@ export default function XyloPlatform() {
                       <SelectItem value="">الكل</SelectItem>
                       {categories.map((cat) => (
                         <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
+                          {cat.icon} {cat.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -878,11 +1478,109 @@ export default function XyloPlatform() {
                   <ArticleCard
                     key={article.id}
                     article={article}
+                    user={user}
                     onClick={() => openArticleDetail(article)}
+                    onLike={() => handleLike(article.id)}
+                    onBookmark={() => handleBookmark(article.id)}
+                    onShare={() => handleShare(article)}
+                    onAuthorClick={() => viewUserProfile(article.author.id)}
                   />
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Profile Section */}
+        {activeSection === 'profile' && viewingUser && (
+          <div className="space-y-6">
+            {/* Profile Header */}
+            <Card className="border-0 shadow-lg overflow-hidden">
+              <div className="h-32 bg-gradient-to-r from-purple-500 to-indigo-600" />
+              <CardContent className="pt-0">
+                <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 -mt-12">
+                  <Avatar className="w-24 h-24 border-4 border-white shadow-lg">
+                    <AvatarImage src={viewingUser.avatar} />
+                    <AvatarFallback className="bg-gradient-to-br from-purple-500 to-indigo-600 text-white text-2xl">
+                      {viewingUser.displayName?.[0] || viewingUser.name?.[0] || '?'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-2xl font-bold">{viewingUser.displayName || viewingUser.name}</h1>
+                      {viewingUser.isVerified && (
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                          موثق
+                        </Badge>
+                      )}
+                    </div>
+                    {viewingUser.bio && (
+                      <p className="text-gray-600 mt-1">{viewingUser.bio}</p>
+                    )}
+                  </div>
+                  {user && user.id !== viewingUser.id && (
+                    <Button
+                      className={cn(
+                        isFollowing 
+                          ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          : "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                      )}
+                      onClick={() => handleFollow(viewingUser.id)}
+                    >
+                      <Users className="w-4 h-4 ml-2" />
+                      {isFollowing ? 'إلغاء المتابعة' : 'متابعة'}
+                    </Button>
+                  )}
+                </div>
+                
+                {/* Stats */}
+                <div className="grid grid-cols-4 gap-4 mt-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{viewingUser._count?.articles || 0}</p>
+                    <p className="text-sm text-gray-500">مقال</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{viewingUser._count?.followers || 0}</p>
+                    <p className="text-sm text-gray-500">متابع</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{viewingUser._count?.following || 0}</p>
+                    <p className="text-sm text-gray-500">متابَع</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{viewingUser.role === 'CREATOR' ? 'صانع محتوى' : 'مستخدم'}</p>
+                    <p className="text-sm text-gray-500">الدور</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* User Articles */}
+            <div>
+              <h2 className="text-xl font-bold mb-4">المقالات</h2>
+              {userArticles.length === 0 ? (
+                <Card className="border-0 shadow-lg">
+                  <CardContent className="text-center py-8">
+                    <FileText className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                    <p className="text-gray-500">لا توجد مقالات بعد</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {userArticles.map((article) => (
+                    <ArticleCard
+                      key={article.id}
+                      article={article}
+                      user={user}
+                      onClick={() => openArticleDetail(article)}
+                      onLike={() => handleLike(article.id)}
+                      onBookmark={() => handleBookmark(article.id)}
+                      onShare={() => handleShare(article)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1049,6 +1747,42 @@ export default function XyloPlatform() {
             </Card>
           </div>
         )}
+
+        {/* Bookmarks Section */}
+        {activeSection === 'bookmarks' && user && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold">المحفوظات</h2>
+            
+            {bookmarksLoading ? (
+              <div className="text-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto" />
+              </div>
+            ) : bookmarks.length === 0 ? (
+              <Card className="border-0 shadow-lg">
+                <CardContent className="text-center py-12">
+                  <Bookmark className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">لا توجد محفوظات</h3>
+                  <p className="text-gray-600">احفظ المقالات المفضلة لقراءتها لاحقاً</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {bookmarks.map((article) => (
+                  <ArticleCard
+                    key={article.id}
+                    article={article}
+                    user={user}
+                    onClick={() => openArticleDetail(article)}
+                    onLike={() => handleLike(article.id)}
+                    onBookmark={() => handleBookmark(article.id)}
+                    onShare={() => handleShare(article)}
+                    onAuthorClick={() => viewUserProfile(article.author.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Login Modal */}
@@ -1183,12 +1917,45 @@ export default function XyloPlatform() {
           {selectedArticle && (
             <>
               <DialogHeader>
-                <DialogTitle className="text-2xl">{selectedArticle.title}</DialogTitle>
-                <DialogDescription className="flex items-center gap-4">
-                  <span className="flex items-center gap-1">
-                    <User className="w-4 h-4" />
+                <div className="flex items-start justify-between">
+                  <DialogTitle className="text-2xl pr-8">{selectedArticle.title}</DialogTitle>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="shrink-0">
+                        <MoreHorizontal className="w-5 h-5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => handleShare(selectedArticle)}>
+                        <Share2 className="w-4 h-4 ml-2" />
+                        مشاركة
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleBookmark(selectedArticle.id)}>
+                        <Bookmark className="w-4 h-4 ml-2" />
+                        {selectedArticle.isBookmarked ? 'إزالة من المحفوظات' : 'حفظ'}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-red-600">
+                        <Flag className="w-4 h-4 ml-2" />
+                        إبلاغ
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <DialogDescription className="flex items-center gap-4 flex-wrap">
+                  <button 
+                    className="flex items-center gap-1 hover:text-purple-600"
+                    onClick={() => { viewUserProfile(selectedArticle.author.id); setShowArticleModal(false) }}
+                  >
+                    <Avatar className="w-5 h-5">
+                      <AvatarImage src={selectedArticle.author.avatar} />
+                      <AvatarFallback>{selectedArticle.author.displayName?.[0] || selectedArticle.author.name?.[0]}</AvatarFallback>
+                    </Avatar>
                     {selectedArticle.author.displayName || selectedArticle.author.name || 'مستخدم'}
-                  </span>
+                    {selectedArticle.author.isVerified && (
+                      <Badge variant="secondary" className="text-xs">موثق</Badge>
+                    )}
+                  </button>
                   <span className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />
                     {formatDate(selectedArticle.createdAt)}
@@ -1197,10 +1964,14 @@ export default function XyloPlatform() {
                     <Eye className="w-4 h-4" />
                     {formatNumber(selectedArticle.views)}
                   </span>
+                  <span className="flex items-center gap-1 text-xs">
+                    {calculateReadTime(selectedArticle.content)} دقيقة قراءة
+                  </span>
                 </DialogDescription>
               </DialogHeader>
+              
               <ScrollArea className="flex-1 -mx-6 px-6">
-                <div className="space-y-4">
+                <div className="space-y-4 pb-4">
                   {selectedArticle.coverImage && (
                     <img
                       src={selectedArticle.coverImage}
@@ -1213,22 +1984,105 @@ export default function XyloPlatform() {
                       {selectedArticle.content}
                     </p>
                   </div>
+                  
+                  {/* Tags */}
+                  {selectedArticle.tags && (
+                    <div className="flex flex-wrap gap-2 pt-4">
+                      {JSON.parse(selectedArticle.tags).map((tag: string) => (
+                        <Badge key={tag} variant="outline" className="gap-1">
+                          <Hash className="w-3 h-3" />
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Comments Section */}
+                <div className="border-t pt-4 mt-4">
+                  <h3 className="font-bold mb-4">التعليقات ({comments.length})</h3>
+                  
+                  {/* Add Comment */}
+                  <div className="flex gap-2 mb-4">
+                    <Input
+                      placeholder="أضف تعليقاً..."
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button onClick={() => handleAddComment(selectedArticle.id)} disabled={!newComment.trim()}>
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Comments List */}
+                  {commentsLoading ? (
+                    <div className="text-center py-4">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                    </div>
+                  ) : comments.length === 0 ? (
+                    <p className="text-gray-500 text-center py-4">لا توجد تعليقات. كن أول من يعلق!</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {comments.map((comment) => (
+                        <div key={comment.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={comment.author.avatar} />
+                            <AvatarFallback>{comment.author.displayName?.[0] || comment.author.name?.[0]}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{comment.author.displayName || comment.author.name}</span>
+                              <span className="text-xs text-gray-400">{formatDate(comment.createdAt)}</span>
+                            </div>
+                            <p className="text-sm text-gray-700 mt-1">{comment.content}</p>
+                            <div className="flex items-center gap-4 mt-2">
+                              <button className="text-xs text-gray-500 hover:text-purple-600 flex items-center gap-1">
+                                <ThumbsUp className="w-3 h-3" />
+                                {comment.likes}
+                              </button>
+                              <button 
+                                className="text-xs text-gray-500 hover:text-purple-600 flex items-center gap-1"
+                                onClick={() => setReplyingTo(comment.id)}
+                              >
+                                <Reply className="w-3 h-3" />
+                                رد
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
+              
               <DialogFooter className="flex-wrap gap-2 border-t pt-4">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="gap-1">
-                    <Heart className="w-3 h-3" />
-                    {selectedArticle.likes}
-                  </Badge>
-                  <Badge variant="outline" className="gap-1">
-                    <MessageCircle className="w-3 h-3" />
-                    {selectedArticle._count?.comments || 0}
-                  </Badge>
-                  <Badge variant="outline" className="gap-1 bg-amber-50 border-amber-200">
-                    <Gift className="w-3 h-3" />
-                    {selectedArticle.giftCount} هدية
-                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(selectedArticle.isLiked && "text-red-500 border-red-200")}
+                    onClick={() => handleLike(selectedArticle.id)}
+                  >
+                    <Heart className={cn("w-4 h-4", selectedArticle.isLiked && "fill-red-500")} />
+                    <span className="mr-1">{formatNumber(selectedArticle.likes)}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(selectedArticle.isBookmarked && "text-purple-500 border-purple-200")}
+                    onClick={() => handleBookmark(selectedArticle.id)}
+                  >
+                    <Bookmark className={cn("w-4 h-4", selectedArticle.isBookmarked && "fill-purple-500")} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleShare(selectedArticle)}
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </Button>
                 </div>
                 <Button
                   className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 mr-auto"
@@ -1276,7 +2130,7 @@ export default function XyloPlatform() {
                 <SelectContent>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>
-                      {cat.name}
+                      {cat.icon} {cat.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1484,6 +2338,11 @@ export default function XyloPlatform() {
               </div>
               <span className="font-bold text-gray-900">زايلو</span>
             </div>
+            <div className="flex items-center gap-6 text-sm text-gray-500">
+              <a href="#" className="hover:text-purple-600">الشروط والأحكام</a>
+              <a href="#" className="hover:text-purple-600">سياسة الخصوصية</a>
+              <a href="#" className="hover:text-purple-600">تواصل معنا</a>
+            </div>
             <p className="text-gray-500 text-sm">
               © {new Date().getFullYear()} زايلو. جميع الحقوق محفوظة.
             </p>
@@ -1495,66 +2354,110 @@ export default function XyloPlatform() {
 }
 
 // Article Card Component
-function ArticleCard({ article, onClick }: { article: Article; onClick: () => void }) {
+function ArticleCard({ 
+  article, 
+  user,
+  onClick, 
+  onLike, 
+  onBookmark, 
+  onShare,
+  onAuthorClick 
+}: { 
+  article: Article
+  user: User | null
+  onClick: () => void
+  onLike: () => void
+  onBookmark: () => void
+  onShare: () => void
+  onAuthorClick?: () => void
+}) {
   return (
-    <Card
-      className="border-0 shadow-lg hover:shadow-xl transition-all cursor-pointer overflow-hidden group"
-      onClick={onClick}
-    >
-      {article.coverImage ? (
-        <div className="relative h-48 overflow-hidden">
+    <Card className="border-0 shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
+      {article.coverImage && (
+        <div className="h-48 bg-gray-100 overflow-hidden">
           <img
             src={article.coverImage}
             alt={article.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover hover:scale-105 transition-transform"
           />
-        </div>
-      ) : (
-        <div className="h-32 bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">
-          <FileText className="w-12 h-12 text-purple-300" />
         </div>
       )}
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-lg line-clamp-2">{article.title}</CardTitle>
+        <div className="flex items-center gap-2">
           {article.category && (
-            <Badge variant="secondary" className="shrink-0">
+            <Badge variant="outline" className="text-xs">
               {categories.find(c => c.id === article.category)?.name || article.category}
             </Badge>
           )}
+          <span className="text-xs text-gray-400">{formatDate(article.createdAt)}</span>
         </div>
-        <CardDescription className="flex items-center gap-2">
-          <Avatar className="w-6 h-6">
-            <AvatarImage src={article.author.avatar} />
-            <AvatarFallback className="text-xs">
-              {article.author.displayName?.[0] || article.author.name?.[0] || '؟'}
-            </AvatarFallback>
-          </Avatar>
-          <span>{article.author.displayName || article.author.name || 'مستخدم'}</span>
-          {article.author.isVerified && (
-            <CheckCircle className="w-4 h-4 text-blue-500" />
-          )}
-        </CardDescription>
+        <CardTitle 
+          className="text-lg line-clamp-2 cursor-pointer hover:text-purple-600"
+          onClick={onClick}
+        >
+          {article.title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="pb-2">
-        <p className="text-gray-600 text-sm line-clamp-2">
-          {article.excerpt || article.content.substring(0, 150)}
-        </p>
+        {article.excerpt && (
+          <p className="text-gray-600 text-sm line-clamp-2">{article.excerpt}</p>
+        )}
+        <div className="flex items-center gap-3 mt-3">
+          <button 
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-purple-600"
+            onClick={(e) => { e.stopPropagation(); onAuthorClick?.() }}
+          >
+            <Avatar className="w-6 h-6">
+              <AvatarImage src={article.author.avatar} />
+              <AvatarFallback>{article.author.displayName?.[0] || article.author.name?.[0]}</AvatarFallback>
+            </Avatar>
+            <span>{article.author.displayName || article.author.name || 'مستخدم'}</span>
+            {article.author.isVerified && (
+              <Badge variant="secondary" className="text-[10px] px-1">موثق</Badge>
+            )}
+          </button>
+        </div>
       </CardContent>
-      <CardFooter className="pt-0">
-        <div className="flex items-center gap-4 text-gray-500 text-sm">
-          <span className="flex items-center gap-1">
-            <Eye className="w-4 h-4" />
-            {formatNumber(article.views)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Heart className="w-4 h-4" />
-            {formatNumber(article.likes)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Gift className="w-4 h-4" />
-            {article.giftCount}
-          </span>
+      <CardFooter className="pt-2 border-t">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-3 text-sm text-gray-500">
+            <span className="flex items-center gap-1">
+              <Eye className="w-4 h-4" />
+              {formatNumber(article.views)}
+            </span>
+            <button 
+              className={cn(
+                "flex items-center gap-1 hover:text-red-500",
+                article.isLiked && "text-red-500"
+              )}
+              onClick={(e) => { e.stopPropagation(); onLike() }}
+            >
+              <Heart className={cn("w-4 h-4", article.isLiked && "fill-red-500")} />
+              {formatNumber(article.likes)}
+            </button>
+            <span className="flex items-center gap-1">
+              <MessageCircle className="w-4 h-4" />
+              {article._count?.comments || 0}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={(e) => { e.stopPropagation(); onBookmark() }}
+            >
+              <Bookmark className={cn("w-4 h-4", article.isBookmarked && "fill-purple-500 text-purple-500")} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={(e) => { e.stopPropagation(); onShare() }}
+            >
+              <Share2 className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </CardFooter>
     </Card>

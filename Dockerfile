@@ -47,7 +47,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install required tools
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl curl
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -63,6 +63,7 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/package.json ./
 
 # Set proper permissions
 RUN chown -R nextjs:nodejs /app
@@ -75,8 +76,8 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:3000/ || exit 1
 
-# Start command with database migration
-CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node server.js"]
+# Start command - run migrations then start server
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
