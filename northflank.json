@@ -34,7 +34,9 @@
     "NODE_ENV": "production",
     "NEXT_TELEMETRY_DISABLED": "1"
   },
-  
+
+  "secretGroups": ["xylo-environment-secrets"],
+
   "secrets": [
     "DATABASE_URL",
     "DIRECT_DATABASE_URL",
