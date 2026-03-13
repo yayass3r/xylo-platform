@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, report });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 });
+      return NextResponse.json({ error: error.issues[0]?.message || "Validation error" }, { status: 400 });
     }
     console.error('Create report error:', error);
     return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء البلاغ' }, { status: 500 });
@@ -143,7 +143,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: true, report });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 });
+      return NextResponse.json({ error: error.issues[0]?.message || "Validation error" }, { status: 400 });
     }
     console.error('Update report error:', error);
     return NextResponse.json({ error: 'حدث خطأ أثناء تحديث البلاغ' }, { status: 500 });
