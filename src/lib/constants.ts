@@ -1,4 +1,25 @@
 // Currency conversion rates
+import { Article, User, Notification, Wallet, Transaction } from '@prisma/client';
+
+// Re-export Prisma types
+export type { Article, User, Notification, Transaction };
+
+// Extended Article type with relations and computed fields
+export interface ArticleWithAuthor extends Article {
+  author: Pick<User, 'id' | 'name' | 'displayName' | 'avatar' | 'isVerified'>;
+  isLiked?: boolean;
+  isBookmarked?: boolean;
+  _count?: {
+    comments: number;
+    likes: number;
+  };
+}
+
+// Extended User type with wallet relation
+export interface UserWithWallet extends User {
+  wallet: Wallet | null;
+}
+
 export const CURRENCY_RATES = {
   MALCOIN_PER_USD: 500, // 1 USD = 500 MALCOIN
   QUSCOIN_COMMISSION: 0.8, // 80% goes to creator
@@ -50,16 +71,16 @@ export const WITHDRAWAL_METHODS = [
 
 // Article categories
 export const ARTICLE_CATEGORIES = [
-  { id: 'technology', name: 'تقنية' },
-  { id: 'business', name: 'أعمال' },
-  { id: 'lifestyle', name: 'أسلوب حياة' },
-  { id: 'education', name: 'تعليم' },
-  { id: 'entertainment', name: 'ترفيه' },
-  { id: 'health', name: 'صحة' },
-  { id: 'sports', name: 'رياضة' },
-  { id: 'travel', name: 'سفر' },
-  { id: 'food', name: 'طعام' },
-  { id: 'other', name: 'أخرى' },
+  { id: 'technology', name: 'تقنية', icon: '💻' },
+  { id: 'business', name: 'أعمال', icon: '💼' },
+  { id: 'lifestyle', name: 'أسلوب حياة', icon: '✨' },
+  { id: 'education', name: 'تعليم', icon: '📚' },
+  { id: 'entertainment', name: 'ترفيه', icon: '🎮' },
+  { id: 'health', name: 'صحة', icon: '🏥' },
+  { id: 'sports', name: 'رياضة', icon: '⚽' },
+  { id: 'travel', name: 'سفر', icon: '✈️' },
+  { id: 'food', name: 'طعام', icon: '🍕' },
+  { id: 'other', name: 'أخرى', icon: '📝' },
 ] as const;
 
 // Default gifts
@@ -83,3 +104,51 @@ export const DEFAULT_RECHARGE_PACKAGES = [
   { name: 'Professional', nameAr: 'احترافي', malcoinAmount: 25000, priceUSD: 50, bonusMalcoin: 7500, sortOrder: 5 },
   { name: 'Enterprise', nameAr: 'مؤسسي', malcoinAmount: 50000, priceUSD: 100, bonusMalcoin: 20000, sortOrder: 6 },
 ] as const;
+
+// Transaction type labels
+export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
+  RECHARGE: 'شحن رصيد',
+  GIFT_SENT: 'هدية مرسلة',
+  GIFT_RECEIVED: 'هدية مستلمة',
+  WITHDRAWAL: 'سحب رصيد',
+  REFERRAL_BONUS: 'مكافأة إحالة',
+  COMMISSION: 'عمولة',
+};
+
+// Utility functions
+export function formatNumber(num: number): string {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
+  }
+  return num.toString();
+}
+
+export function formatDate(dateString: string | Date): string {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  
+  if (minutes < 1) return 'الآن';
+  if (minutes < 60) return `منذ ${minutes} دقيقة`;
+  if (hours < 24) return `منذ ${hours} ساعة`;
+  if (days < 7) return `منذ ${days} يوم`;
+  
+  return date.toLocaleDateString('ar-SA', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+export function calculateReadTime(content: string): number {
+  const wordsPerMinute = 200;
+  const words = content.split(/\s+/).length;
+  return Math.ceil(words / wordsPerMinute);
+}
