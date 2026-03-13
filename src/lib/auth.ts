@@ -4,7 +4,11 @@ import { db } from './db';
 import { cookies } from 'next/headers';
 import { User, UserRole } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'xylo-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
 
 export interface JWTPayload {
   userId: string;

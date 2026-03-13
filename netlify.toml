@@ -1,0 +1,13 @@
+[build]
+  command = "bun install && bun run db:generate && bun run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  BUN_VERSION = "latest"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  included_files = ["node_modules/.prisma/**", "node_modules/@prisma/client/**"]
