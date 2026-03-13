@@ -19,10 +19,15 @@ FROM base AS deps
 COPY package.json ./
 COPY prisma ./prisma/
 
+# Use PostgreSQL schema for production build
+RUN if [ -f "prisma/schema.prod.prisma" ]; then \
+    cp prisma/schema.prod.prisma prisma/schema.prisma; \
+    fi
+
 # Install all dependencies (including devDependencies for build)
 RUN npm install --legacy-peer-deps
 
-# Generate Prisma Client during deps stage
+# Generate Prisma Client with PostgreSQL schema
 RUN npx prisma generate
 
 # ====================
@@ -35,6 +40,14 @@ WORKDIR /app
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Ensure PostgreSQL schema is used
+RUN if [ -f "prisma/schema.prod.prisma" ]; then \
+    cp prisma/schema.prod.prisma prisma/schema.prisma; \
+    fi
+
+# Regenerate Prisma Client to ensure correct schema
+RUN npx prisma generate
 
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED=1
