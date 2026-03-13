@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         excerpt: excerpt || content.substring(0, 200),
         coverImage: coverImage || null,
         category: category || null,
-        tags: tags ? JSON.stringify(tags) : null,
+        tags: tags || [],
         status,
         publishedAt: status === 'PUBLISHED' ? new Date() : null,
       },
