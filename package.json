@@ -11,11 +11,7 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
-    "db:seed": "tsx prisma/seed.ts"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.3",
