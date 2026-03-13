@@ -1,32 +1,30 @@
 # ==========================================
-# زايلو (Xylo) - Dockerfile بسيط للإنتاج
+# زايلو (Xylo) - Dockerfile للإنتاج (Node.js)
 # ==========================================
 
-FROM oven/bun:1 AS base
+FROM node:20-alpine AS base
+
+# Install dependencies for building native modules
+RUN apk add --no-cache libc6-compat openssl python3 make g++
+
 WORKDIR /app
 
 # ====================
-# Stage 1: Install dependencies
+# Stage 1: Dependencies
 # ====================
 FROM base AS deps
 
-# Install openssl for Prisma
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-
 # Copy package files
-COPY package.json bun.lock ./
+COPY package.json ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN bun install --frozen-lockfile || bun install
+# Install dependencies with npm (no package-lock.json)
+RUN npm install --legacy-peer-deps
 
 # ====================
 # Stage 2: Build
 # ====================
 FROM base AS builder
-
-# Install openssl for Prisma
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -39,21 +37,21 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Use PostgreSQL schema
-RUN cp prisma/schema.prod.prisma prisma/schema.prisma || true
+RUN if [ -f "prisma/schema.prod.prisma" ]; then cp prisma/schema.prod.prisma prisma/schema.prisma; fi
 
 # Generate Prisma Client
-RUN bunx prisma generate
+RUN npx prisma generate
 
 # Build the application
-RUN bun run build
+RUN npm run build
 
 # ====================
-# Stage 3: Run
+# Stage 3: Runner
 # ====================
-FROM oven/bun:1-slim AS runner
+FROM node:20-alpine AS runner
 
-# Install openssl and curl
-RUN apt-get update && apt-get install -y openssl curl && rm -rf /var/lib/apt/lists/*
+# Install openssl and curl for health checks
+RUN apk add --no-cache openssl curl
 
 WORKDIR /app
 
@@ -71,7 +69,6 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/package.json ./
 
 # Permissions
@@ -89,4 +86,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD curl -f http://localhost:3000/ || exit 1
 
 # Start: push schema then run server
-CMD ["sh", "-c", "bunx prisma db push --skip-generate || true && node server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate || true && node server.js"]
