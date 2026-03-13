@@ -44,6 +44,10 @@ FROM base AS builder
 
 WORKDIR /app
 
+# Force cache invalidation with commit reference
+ARG CACHE_BUST=2026-03-13T20:25:00Z
+RUN echo "Cache bust: $CACHE_BUST"
+
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
           },
           _count: {
             select: { 
-              comments: true // replies
+              replies: true // replies to this comment
             }
           }
         },
