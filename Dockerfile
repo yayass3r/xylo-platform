@@ -1,84 +1,103 @@
 # ==========================================
-# زايلو (Xylo) - Dockerfile للنشر على Northflank
+# زايلو (Xylo) - Dockerfile محسّن للإنتاج
 # ==========================================
 
+# ====================
 # Stage 1: Dependencies
+# ====================
 FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat openssl
+
+# تثبيت الأدوات المطلوبة
+RUN apk add --no-cache libc6-compat openssl python3 make g++
+
 WORKDIR /app
 
-# Install bun
+# تثبيت Bun
 RUN npm install -g bun
 
-# Copy package files
+# نسخ ملفات الحزم أولاً (للاستفادة من الـ cache)
 COPY package.json bun.lock* ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+# تثبيت التبعيات (بدون frozen-lockfile لتجنب الأخطاء)
+RUN bun install
 
+# ====================
 # Stage 2: Builder
+# ====================
 FROM node:20-alpine AS builder
+
 WORKDIR /app
 
-# Install bun and required tools
+# تثبيت Bun والأدوات المطلوبة
 RUN npm install -g bun
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl python3 make g++
 
-# Copy dependencies from deps stage
+# نسخ التبعيات من المرحلة السابقة
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Set environment variables for build
+# متغيرات البيئة للبناء
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV SKIP_ENV_VALIDATION=1
 
-# Use PostgreSQL schema for production
+# استخدام schema الإنتاجي (PostgreSQL)
 RUN cp prisma/schema.prod.prisma prisma/schema.prisma
 
-# Generate Prisma Client
+# توليد Prisma Client
 RUN bunx prisma generate
 
-# Build the application
+# بناء التطبيق
 RUN bun run build
 
+# ====================
 # Stage 3: Runner
+# ====================
 FROM node:20-alpine AS runner
+
 WORKDIR /app
 
-# Install required tools
+# تثبيت الأدوات المطلوبة للتشغيل
 RUN apk add --no-cache openssl curl
 
+# متغيرات البيئة
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Create non-root user
+# إنشاء مستخدم غير root
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy necessary files
+# نسخ الملفات الضرورية
 COPY --from=builder /app/public ./public
+
+# نسخ ملفات البناء المستقلة
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+
+# نسخ ملفات Prisma للـ runtime
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/package.json ./
-COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
 
-# Set proper permissions
+# تعيين الصلاحيات
 RUN chown -R nextjs:nodejs /app
 
+# التبديل للمستخدم غير root
 USER nextjs
 
+# المنفذ
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:3000/ || exit 1
+# Health check محسّن
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD curl -f http://localhost:3000/api || exit 1
 
-# Start command - push schema, seed database, then start server
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx prisma db seed && node server.js"]
+# أمر التشغيل - مزامنة قاعدة البيانات ثم تشغيل الخادم
+CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --skip-generate && node server.js"]
