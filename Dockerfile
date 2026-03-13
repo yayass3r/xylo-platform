@@ -17,14 +17,20 @@ FROM base AS deps
 
 # Copy package files first for better caching
 COPY package.json ./
+
+# Copy prisma folder
 COPY prisma ./prisma/
 
-# Use PostgreSQL schema for production build
+# IMPORTANT: Replace SQLite schema with PostgreSQL schema for production
 RUN if [ -f "prisma/schema.prod.prisma" ]; then \
+    echo "Using PostgreSQL schema for production..."; \
     cp prisma/schema.prod.prisma prisma/schema.prisma; \
     fi
 
-# Install all dependencies (including devDependencies for build)
+# Verify schema has correct provider
+RUN head -15 prisma/schema.prisma
+
+# Install all dependencies
 RUN npm install --legacy-peer-deps
 
 # Generate Prisma Client with PostgreSQL schema
@@ -41,12 +47,13 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Ensure PostgreSQL schema is used
+# Ensure PostgreSQL schema is used in builder stage too
 RUN if [ -f "prisma/schema.prod.prisma" ]; then \
+    echo "Ensuring PostgreSQL schema in builder..."; \
     cp prisma/schema.prod.prisma prisma/schema.prisma; \
     fi
 
-# Regenerate Prisma Client to ensure correct schema
+# Regenerate Prisma Client with correct schema
 RUN npx prisma generate
 
 # Set environment variables for build
@@ -54,7 +61,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Build the Next.js application
-# The build script already handles copying static files and public folder
 RUN npm run build
 
 # ====================
@@ -106,5 +112,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || curl -f http://localhost:3000/ || exit 1
 
 # Start script: Run prisma migrate deploy then start server
-# Using migrate deploy for production (applies migrations without creating new ones)
 CMD ["sh", "-c", "npx prisma migrate deploy || npx prisma db push --skip-generate || true && node server.js"]
