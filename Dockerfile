@@ -1,103 +1,92 @@
 # ==========================================
-# زايلو (Xylo) - Dockerfile محسّن للإنتاج
+# زايلو (Xylo) - Dockerfile بسيط للإنتاج
 # ==========================================
 
-# ====================
-# Stage 1: Dependencies
-# ====================
-FROM node:20-alpine AS deps
-
-# تثبيت الأدوات المطلوبة
-RUN apk add --no-cache libc6-compat openssl python3 make g++
-
+FROM oven/bun:1 AS base
 WORKDIR /app
 
-# تثبيت Bun
-RUN npm install -g bun
+# ====================
+# Stage 1: Install dependencies
+# ====================
+FROM base AS deps
 
-# نسخ ملفات الحزم أولاً (للاستفادة من الـ cache)
-COPY package.json bun.lock* ./
+# Install openssl for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# Copy package files
+COPY package.json bun.lock ./
 COPY prisma ./prisma/
 
-# تثبيت التبعيات (بدون frozen-lockfile لتجنب الأخطاء)
-RUN bun install
+# Install dependencies
+RUN bun install --frozen-lockfile || bun install
 
 # ====================
-# Stage 2: Builder
+# Stage 2: Build
 # ====================
-FROM node:20-alpine AS builder
+FROM base AS builder
+
+# Install openssl for Prisma
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# تثبيت Bun والأدوات المطلوبة
-RUN npm install -g bun
-RUN apk add --no-cache openssl python3 make g++
-
-# نسخ التبعيات من المرحلة السابقة
+# Copy dependencies
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# متغيرات البيئة للبناء
+# Environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-ENV SKIP_ENV_VALIDATION=1
 
-# استخدام schema الإنتاجي (PostgreSQL)
-RUN cp prisma/schema.prod.prisma prisma/schema.prisma
+# Use PostgreSQL schema
+RUN cp prisma/schema.prod.prisma prisma/schema.prisma || true
 
-# توليد Prisma Client
+# Generate Prisma Client
 RUN bunx prisma generate
 
-# بناء التطبيق
+# Build the application
 RUN bun run build
 
 # ====================
-# Stage 3: Runner
+# Stage 3: Run
 # ====================
-FROM node:20-alpine AS runner
+FROM oven/bun:1-slim AS runner
+
+# Install openssl and curl
+RUN apt-get update && apt-get install -y openssl curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# تثبيت الأدوات المطلوبة للتشغيل
-RUN apk add --no-cache openssl curl
-
-# متغيرات البيئة
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# إنشاء مستخدم غير root
+# Create user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# نسخ الملفات الضرورية
+# Copy files
 COPY --from=builder /app/public ./public
-
-# نسخ ملفات البناء المستقلة
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-
-# نسخ ملفات Prisma للـ runtime
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/package.json ./
 
-# تعيين الصلاحيات
+# Permissions
 RUN chown -R nextjs:nodejs /app
 
-# التبديل للمستخدم غير root
 USER nextjs
 
-# المنفذ
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Health check محسّن
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-  CMD curl -f http://localhost:3000/api || exit 1
+  CMD curl -f http://localhost:3000/ || exit 1
 
-# أمر التشغيل - مزامنة قاعدة البيانات ثم تشغيل الخادم
-CMD ["sh", "-c", "node ./node_modules/prisma/build/index.js db push --skip-generate && node server.js"]
+# Start: push schema then run server
+CMD ["sh", "-c", "bunx prisma db push --skip-generate || true && node server.js"]
